@@ -1,0 +1,212 @@
+"""
+Endpoints de backend para integrar el script existente `analizer_script.py` (sin modificarlo).
+
+- Permite ejecutar el script bajo demanda
+- Expone el JSON/MD generados y lista/serve archivos HTML/PNG/JSON/MD
+
+Nota: No se hacen cambios en el script; solo se orquesta su ejecución y el servido de outputs.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import json
+import time
+import glob
+import shlex
+import asyncio
+import subprocess
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
+
+
+router = APIRouter(prefix="/api/analizer", tags=["Portfolio Analizer v2"])
+
+
+# Directorio base del backend
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
+
+# Ruta a la carpeta del analizador v2 (con espacio en el nombre, mantener exacto)
+ANALYZER_DIR = BACKEND_ROOT / "porfolio analizer v2"
+SCRIPT_PATH = ANALYZER_DIR / "analizer_script.py"
+
+# Archivos de salida esperados (generados por el script)
+RESULTS_JSON_NAME = "portfolio_analysis_results.json"
+REPORT_MD_NAME = "reporte_financiero_exhaustivo.md"
+
+
+def _ensure_environment() -> None:
+    if not ANALYZER_DIR.exists():
+        raise HTTPException(status_code=404, detail=f"Directorio del analizador no encontrado: {ANALYZER_DIR}")
+    if not SCRIPT_PATH.exists():
+        raise HTTPException(status_code=404, detail=f"Script no encontrado: {SCRIPT_PATH}")
+
+
+def _safe_path_in_analyzer_dir(filename: str) -> Path:
+    """Previene path traversal asegurando que el archivo esté dentro del directorio del analizador."""
+    candidate = (ANALYZER_DIR / filename).resolve()
+    if not str(candidate).startswith(str(ANALYZER_DIR.resolve())):
+        raise HTTPException(status_code=400, detail="Ruta inválida")
+    return candidate
+
+
+def _list_files_by_ext() -> Dict[str, List[str]]:
+    patterns = {
+        "html": "*.html",
+        "png": "*.png",
+        "json": "*.json",
+        "md": "*.md",
+    }
+    result: Dict[str, List[str]] = {k: [] for k in patterns}
+    for kind, pattern in patterns.items():
+        files = sorted([p.name for p in ANALYZER_DIR.glob(pattern)], reverse=True)
+        result[kind] = files
+    return result
+
+
+@router.get("/health")
+async def health() -> Dict[str, Any]:
+    try:
+        _ensure_environment()
+        files = _list_files_by_ext()
+        has_json = RESULTS_JSON_NAME in files.get("json", []) or (ANALYZER_DIR / RESULTS_JSON_NAME).exists()
+        has_md = REPORT_MD_NAME in files.get("md", []) or (ANALYZER_DIR / REPORT_MD_NAME).exists()
+        return {
+            "status": "ok",
+            "analyzer_dir": str(ANALYZER_DIR),
+            "script_path": str(SCRIPT_PATH),
+            "has_results_json": has_json,
+            "has_report_md": has_md,
+            "files": files,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@router.post("/run")
+async def run_script(timeout_seconds: int = 600) -> Dict[str, Any]:
+    """Ejecuta el script de análisis de forma síncrona y retorna el estado y resumen de outputs.
+
+    timeout_seconds: límite de tiempo para la ejecución (por defecto 10 minutos).
+    """
+    _ensure_environment()
+
+    # Preparar entorno para ejecución headless (matplotlib) y utf-8
+    env = os.environ.copy()
+    env.setdefault("MPLBACKEND", "Agg")
+    env.setdefault("PYTHONIOENCODING", "UTF-8")
+    env.setdefault("PYTHONUTF8", "1")
+
+    start = time.time()
+
+    # Elegir intérprete de Python para ejecutar el script
+    # 1) Preferir el venv local si existe
+    venv_python_win = BACKEND_ROOT / "venv" / "Scripts" / "python.exe"
+    venv_python_posix = BACKEND_ROOT / "venv" / "bin" / "python"
+    if venv_python_win.exists():
+        python_exec = str(venv_python_win)
+    elif venv_python_posix.exists():
+        python_exec = str(venv_python_posix)
+    else:
+        # 2) Usar el mismo intérprete de Python que ejecuta FastAPI
+        python_exec = sys.executable
+    cmd = [python_exec, str(SCRIPT_PATH)]
+
+    try:
+        proc = await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            cwd=str(ANALYZER_DIR),
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Tiempo de ejecución excedido")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fallo al ejecutar script: {e}")
+
+    duration = time.time() - start
+
+    files = _list_files_by_ext()
+
+    response: Dict[str, Any] = {
+        "status": "completed" if proc.returncode == 0 else "failed",
+        "exit_code": proc.returncode,
+        "duration_seconds": round(duration, 2),
+        "python_executable": python_exec,
+        "virtual_env": os.environ.get("VIRTUAL_ENV"),
+        "working_dir": str(ANALYZER_DIR),
+        "stdout_tail": proc.stdout.splitlines()[-50:] if proc.stdout else [],
+        "stderr_tail": proc.stderr.splitlines()[-50:] if proc.stderr else [],
+        "files": files,
+    }
+
+    # Adjuntar paths canónicos a resultados clave si existen
+    results_json = ANALYZER_DIR / RESULTS_JSON_NAME
+    report_md = ANALYZER_DIR / REPORT_MD_NAME
+    if results_json.exists():
+        response["results_json_path"] = str(results_json)
+    if report_md.exists():
+        response["report_md_path"] = str(report_md)
+
+    return response
+
+
+@router.get("/results")
+async def get_results() -> Dict[str, Any]:
+    """Devuelve el contenido del JSON de resultados y metadatos del reporte MD si existen."""
+    _ensure_environment()
+    results: Dict[str, Any] = {"json": None, "report_md": None, "files": _list_files_by_ext()}
+
+    json_path = ANALYZER_DIR / RESULTS_JSON_NAME
+    if json_path.exists():
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                results["json"] = json.load(f)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=500, detail=f"Error al leer JSON de resultados: {e}")
+
+    md_path = ANALYZER_DIR / REPORT_MD_NAME
+    if md_path.exists():
+        # No devolvemos el contenido completo para evitar respuestas muy largas
+        results["report_md"] = {
+            "filename": md_path.name,
+            "path": str(md_path),
+            "size_bytes": md_path.stat().st_size,
+        }
+
+    if not results["json"] and not results["report_md"]:
+        raise HTTPException(status_code=404, detail="No hay resultados disponibles aún")
+
+    return results
+
+
+@router.get("/list-files")
+async def list_files() -> Dict[str, List[str]]:
+    _ensure_environment()
+    return _list_files_by_ext()
+
+
+@router.get("/file/{filename}")
+async def get_file(filename: str):
+    """Sirve un archivo generado (html/png/json/md) desde el directorio del analizador."""
+    _ensure_environment()
+    allowed_ext = {".html", ".png", ".json", ".md"}
+    path = _safe_path_in_analyzer_dir(filename)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    if path.suffix.lower() not in allowed_ext:
+        raise HTTPException(status_code=400, detail="Extensión no permitida")
+    return FileResponse(str(path))
+
+

@@ -124,6 +124,141 @@ class SupabaseStorageService:
             logger.error(f"Error al crear URL firmada: {str(e)}")
             raise Exception(f"Error al crear URL firmada: {str(e)}")
     
+    async def read_html_chart(self, chart_name: str) -> str:
+        """
+        Lee un archivo HTML de gráfico desde Supabase Storage
+        
+        Args:
+            chart_name: Nombre del tipo de gráfico (cumulative_returns, etc.)
+            
+        Returns:
+            str: Contenido HTML del gráfico
+            
+        Raises:
+            Exception: Si el archivo no se puede leer
+        """
+        try:
+            filename = self.get_chart_filename(chart_name)
+            file_path = self.get_metrics_file_path(filename)
+            
+            # Descargar el archivo HTML desde Supabase Storage
+            response = self.client.storage.from_(self.bucket_name).download(file_path)
+            
+            if not response:
+                raise Exception(f"No se pudo descargar el archivo HTML {file_path}")
+            
+            # Decodificar bytes a string (contenido HTML)
+            html_content = response.decode('utf-8')
+            
+            logger.info(f"Archivo HTML {file_path} leído exitosamente desde Supabase Storage")
+            return html_content
+            
+        except Exception as e:
+            logger.error(f"Error al leer archivo HTML desde Supabase Storage: {str(e)}")
+            raise Exception(f"Error al leer gráfico desde Supabase: {str(e)}")
+    
+    def get_chart_filename(self, chart_name: str) -> str:
+        """
+        Mapea el nombre del gráfico a su archivo correspondiente en Supabase Storage
+        
+        Args:
+            chart_name: Nombre del tipo de gráfico
+            
+        Returns:
+            str: Nombre del archivo correspondiente
+        """
+        # Mapeo de nombres de gráficos a archivos en Supabase
+        chart_mapping = {
+            'cumulative_returns': 'rendimiento_acumulado_interactivo.html',
+            'composition_donut': 'donut_chart_interactivo.html',
+            'correlation_matrix': 'matriz_correlacion_interactiva.html',
+            'drawdown_underwater': 'drawdown_underwater_interactivo.html',
+            'breakdown_chart': 'breakdown_chart_interactivo.html',
+            'efficient_frontier': 'efficient_frontier_interactive.html',
+            'portfolio_growth': 'portfolio_growth_interactive.html',
+            'monte_carlo_distribution': 'monte_carlo_distribution.html',
+            'monte_carlo_trajectories': 'monte_carlo_trajectories.html'
+        }
+        
+        filename = chart_mapping.get(chart_name)
+        if not filename:
+            raise ValueError(f"Tipo de gráfico no reconocido: {chart_name}")
+        
+        return filename
+    
+    def create_chart_signed_url(self, chart_name: str, expires_in: int = 3600) -> str:
+        """
+        Crea una URL firmada para acceso directo a un gráfico HTML
+        
+        Args:
+            chart_name: Nombre del tipo de gráfico
+            expires_in: Tiempo de expiración en segundos
+            
+        Returns:
+            str: URL firmada para acceso directo al gráfico
+        """
+        try:
+            filename = self.get_chart_filename(chart_name)
+            return self.create_signed_url(filename, expires_in)
+        except Exception as e:
+            logger.error(f"Error al crear URL firmada para gráfico {chart_name}: {str(e)}")
+            raise Exception(f"Error al crear URL firmada para gráfico: {str(e)}")
+    
+    def list_chart_files(self) -> list:
+        """
+        Lista todos los archivos HTML de gráficos disponibles en Supabase Storage
+        
+        Returns:
+            list: Lista de archivos HTML de gráficos disponibles
+        """
+        try:
+            response = self.client.storage.from_(self.bucket_name).list(self.base_prefix)
+            
+            # Filtrar solo archivos HTML de gráficos
+            chart_files = []
+            for file_data in response:
+                filename = file_data.get("name", "")
+                if filename.endswith(".html") and ("interactivo" in filename or "interactive" in filename):
+                    chart_files.append({
+                        "name": filename,
+                        "size": file_data.get("metadata", {}).get("size") if isinstance(file_data.get("metadata"), dict) else None,
+                        "last_modified": file_data.get("updated_at"),
+                        "full_path": self.get_metrics_file_path(filename),
+                        "chart_type": self.get_chart_type_from_filename(filename)
+                    })
+            
+            logger.info(f"Encontrados {len(chart_files)} archivos de gráficos HTML en Supabase Storage")
+            return chart_files
+            
+        except Exception as e:
+            logger.error(f"Error al listar archivos de gráficos: {str(e)}")
+            return []
+    
+    def get_chart_type_from_filename(self, filename: str) -> Optional[str]:
+        """
+        Determina el tipo de gráfico basado en el nombre del archivo
+        
+        Args:
+            filename: Nombre del archivo
+            
+        Returns:
+            str: Tipo de gráfico o None si no se puede determinar
+        """
+        # Mapeo inverso de archivos a tipos de gráfico
+        filename_to_chart = {
+            'rendimiento_acumulado_interactivo.html': 'cumulative_returns',
+            'donut_chart_interactivo.html': 'composition_donut',
+            'matriz_correlacion_interactiva.html': 'correlation_matrix',
+            'drawdown_underwater_interactivo.html': 'drawdown_underwater',
+            'breakdown_chart_interactivo.html': 'breakdown_chart',
+            'efficient_frontier_interactive.html': 'efficient_frontier',
+            'portfolio_growth_interactive.html': 'portfolio_growth',
+            'monte_carlo_distribution.html': 'monte_carlo_distribution',
+            'monte_carlo_trajectories.html': 'monte_carlo_trajectories'
+        }
+        
+        return filename_to_chart.get(filename)
+    
     def get_file_info(self, filename: str = "api_response_B.json") -> Dict[str, Any]:
         """
         Obtiene información sobre un archivo en Supabase Storage

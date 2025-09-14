@@ -385,10 +385,40 @@ async def get_live_metrics_local():
 @router.get("/api/portfolio/charts/{chart_name}")
 async def get_portfolio_chart(chart_name: str):
     """
-    Endpoint para servir los gráficos HTML generados por el Portfolio Analyzer
+    Endpoint para servir los gráficos HTML desde Supabase Storage
     
     Args:
         chart_name: Nombre del gráfico ('cumulative_returns', 'composition_donut', etc.)
+    """
+    try:
+        # Verificar si Supabase está habilitado
+        if not SUPABASE_ENABLED or not supabase_storage:
+            # Fallback al método local si Supabase no está disponible
+            return await get_portfolio_chart_local(chart_name)
+        
+        # Leer gráfico HTML desde Supabase Storage
+        html_content = await supabase_storage.read_html_chart(chart_name)
+        
+        logger.info(f"Sirviendo gráfico: {chart_name} desde Supabase Storage")
+        
+        return HTMLResponse(content=html_content)
+        
+    except Exception as e:
+        logger.error(f"Error al servir gráfico desde Supabase: {str(e)}")
+        # Intentar fallback al método local
+        try:
+            logger.info(f"Intentando fallback a archivos locales para gráfico: {chart_name}")
+            return await get_portfolio_chart_local(chart_name)
+        except Exception as fallback_error:
+            logger.error(f"Error en fallback para gráfico: {str(fallback_error)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error al servir gráfico: Supabase: {str(e)}, Local: {str(fallback_error)}"
+            )
+
+async def get_portfolio_chart_local(chart_name: str):
+    """
+    Método de fallback para servir gráficos desde archivos locales
     """
     try:
         latest_html = get_latest_html_file(chart_name)
@@ -405,7 +435,7 @@ async def get_portfolio_chart(chart_name: str):
                 detail=f"Archivo de gráfico no existe: {latest_html}"
             )
         
-        logger.info(f"Sirviendo gráfico: {chart_name} desde {latest_html}")
+        logger.info(f"Sirviendo gráfico: {chart_name} desde archivos locales: {latest_html}")
         
         # Leer el contenido HTML y servirlo directamente
         with open(latest_html, 'r', encoding='utf-8') as file:
@@ -413,11 +443,13 @@ async def get_portfolio_chart(chart_name: str):
         
         return HTMLResponse(content=html_content)
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error al servir gráfico {chart_name}: {str(e)}")
+        logger.error(f"Error al servir gráfico local {chart_name}: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error al servir gráfico: {str(e)}"
+            detail=f"Error al servir gráfico local: {str(e)}"
         )
 
 @router.get("/api/portfolio/latest-analysis-timestamp")
@@ -611,3 +643,86 @@ async def supabase_health_check():
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }
+
+# ===== ENDPOINTS ESPECÍFICOS PARA GRÁFICOS EN SUPABASE =====
+
+@router.get("/api/portfolio/charts/supabase/{chart_name}")
+async def get_supabase_chart_direct(chart_name: str):
+    """
+    Obtiene un gráfico HTML directamente desde Supabase Storage (sin fallback)
+    
+    Args:
+        chart_name: Nombre del gráfico ('cumulative_returns', etc.)
+    """
+    try:
+        if not SUPABASE_ENABLED or not supabase_storage:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de Supabase Storage no está disponible"
+            )
+        
+        html_content = await supabase_storage.read_html_chart(chart_name)
+        
+        logger.info(f"Gráfico {chart_name} servido directamente desde Supabase Storage")
+        
+        return HTMLResponse(content=html_content)
+        
+    except Exception as e:
+        logger.error(f"Error al obtener gráfico desde Supabase: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/portfolio/charts/signed-url/{chart_name}")
+async def get_chart_signed_url(chart_name: str, expires_in: int = 3600):
+    """
+    Genera una URL firmada para acceso directo a un gráfico HTML en Supabase Storage
+    
+    Args:
+        chart_name: Nombre del gráfico
+        expires_in: Tiempo de expiración en segundos
+    """
+    try:
+        if not SUPABASE_ENABLED or not supabase_storage:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de Supabase Storage no está disponible"
+            )
+        
+        signed_url = supabase_storage.create_chart_signed_url(chart_name, expires_in)
+        
+        return {
+            "status": "success",
+            "signed_url": signed_url,
+            "chart_name": chart_name,
+            "expires_in": expires_in,
+            "created_at": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error al generar URL firmada para gráfico: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/portfolio/charts/list")
+async def list_available_charts():
+    """
+    Lista todos los gráficos HTML disponibles en Supabase Storage
+    """
+    try:
+        if not SUPABASE_ENABLED or not supabase_storage:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de Supabase Storage no está disponible"
+            )
+        
+        charts = supabase_storage.list_chart_files()
+        
+        return {
+            "status": "success",
+            "source": "supabase_storage",
+            "charts": charts,
+            "total_charts": len(charts),
+            "retrieved_at": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error al listar gráficos en Supabase: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

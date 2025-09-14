@@ -62,6 +62,25 @@ except Exception as e:
         f"No se pudo importar client_data_provider: {e}"
     )
 
+# Importar servicio de Supabase Storage
+try:
+    from services.supabase_storage import get_supabase_storage
+    from config import settings
+    
+    # Inicializar servicio de Supabase con configuración
+    supabase_storage = get_supabase_storage(settings)
+    SUPABASE_ENABLED = supabase_storage is not None
+    
+    if SUPABASE_ENABLED:
+        logger.info("Servicio de Supabase Storage habilitado")
+    else:
+        logger.warning("Servicio de Supabase Storage no se pudo inicializar")
+        
+except Exception as e:
+    SUPABASE_ENABLED = False
+    logger.warning(f"Servicio de Supabase Storage deshabilitado: {e}")
+    supabase_storage = None
+
 
 # ===== Modelos Pydantic =====
 class PortfolioAnalysisRequest(BaseModel):
@@ -277,8 +296,48 @@ async def analyze_custom_portfolio(request: PortfolioAnalysisRequest) -> Dict[st
 @router.get("/api/portfolio/live-metrics")
 async def get_live_metrics():
     """
-    Endpoint para obtener las métricas en vivo del portfolio
-    Retorna performance_metrics y risk_analysis del archivo JSON más reciente
+    Endpoint para obtener las métricas en vivo del portfolio desde Supabase Storage
+    Retorna performance_metrics y risk_analysis del archivo JSON en Supabase
+    """
+    try:
+        # Verificar si Supabase está habilitado
+        if not SUPABASE_ENABLED or not supabase_storage:
+            # Fallback al método local si Supabase no está disponible
+            return await get_live_metrics_local()
+        
+        # Leer métricas desde Supabase Storage
+        data = await supabase_storage.read_metrics_json("api_response_B.json")
+        
+        # Extraer las secciones requeridas
+        response_data = {
+            "timestamp": data.get("timestamp"),
+            "analysis_period": data.get("analysis_period"),
+            "portfolio_composition": data.get("portfolio_composition"),
+            "performance_metrics": data.get("performance_metrics", {}),
+            "risk_analysis": data.get("risk_analysis", {}),
+            "correlations": data.get("correlations", {}),
+            "source": "supabase_storage"
+        }
+        
+        logger.info("Métricas en vivo servidas exitosamente desde Supabase Storage")
+        return response_data
+        
+    except Exception as e:
+        logger.error(f"Error al obtener métricas desde Supabase: {str(e)}")
+        # Intentar fallback al método local
+        try:
+            logger.info("Intentando fallback a archivos locales...")
+            return await get_live_metrics_local()
+        except Exception as fallback_error:
+            logger.error(f"Error en fallback: {str(fallback_error)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error al obtener métricas: Supabase: {str(e)}, Local: {str(fallback_error)}"
+            )
+
+async def get_live_metrics_local():
+    """
+    Método de fallback para obtener métricas desde archivos locales
     """
     try:
         latest_json = get_latest_json_file()
@@ -292,17 +351,18 @@ async def get_live_metrics():
         with open(latest_json, 'r', encoding='utf-8') as file:
             data = json.load(file)
         
-        # Extraer las secciones requeridas según el mapeo del TODO.md
+        # Extraer las secciones requeridas
         response_data = {
             "timestamp": data.get("timestamp"),
             "analysis_period": data.get("analysis_period"),
             "portfolio_composition": data.get("portfolio_composition"),
             "performance_metrics": data.get("performance_metrics", {}),
             "risk_analysis": data.get("risk_analysis", {}),
-            "correlations": data.get("correlations", {})
+            "correlations": data.get("correlations", {}),
+            "source": "local_files"
         }
         
-        logger.info("Métricas en vivo servidas exitosamente")
+        logger.info("Métricas en vivo servidas exitosamente desde archivos locales")
         return response_data
         
     except FileNotFoundError:
@@ -316,7 +376,7 @@ async def get_live_metrics():
             detail="Error al decodificar el archivo de métricas"
         )
     except Exception as e:
-        logger.error(f"Error al obtener métricas en vivo: {str(e)}")
+        logger.error(f"Error al obtener métricas en vivo locales: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Error interno del servidor: {str(e)}"
@@ -436,4 +496,118 @@ async def portfolio_health_check():
         return {
             "status": "error",
             "error": str(e)
+        }
+
+# ===== NUEVOS ENDPOINTS PARA SUPABASE STORAGE =====
+
+@router.get("/api/portfolio/signed-url/{filename}")
+async def get_signed_url(filename: str, expires_in: int = 3600):
+    """
+    Genera una URL firmada para acceso directo a un archivo de métricas en Supabase Storage
+    
+    Args:
+        filename: Nombre del archivo (ej: api_response_B.json)
+        expires_in: Tiempo de expiración en segundos (por defecto: 1 hora)
+    
+    Returns:
+        Dict con la URL firmada
+    """
+    try:
+        if not SUPABASE_ENABLED or not supabase_storage:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de Supabase Storage no está disponible"
+            )
+        
+        signed_url = supabase_storage.create_signed_url(filename, expires_in)
+        
+        return {
+            "status": "success",
+            "signed_url": signed_url,
+            "filename": filename,
+            "expires_in": expires_in,
+            "created_at": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error al generar URL firmada: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/portfolio/supabase/metrics")
+async def get_supabase_metrics(filename: str = "api_response_B.json"):
+    """
+    Obtiene métricas directamente desde Supabase Storage
+    
+    Args:
+        filename: Nombre del archivo JSON (por defecto: api_response_B.json)
+    """
+    try:
+        if not SUPABASE_ENABLED or not supabase_storage:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de Supabase Storage no está disponible"
+            )
+        
+        data = await supabase_storage.read_metrics_json(filename)
+        
+        return {
+            "status": "success",
+            "source": "supabase_storage",
+            "filename": filename,
+            "data": data,
+            "retrieved_at": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error al obtener métricas desde Supabase: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/portfolio/supabase/files")
+async def list_supabase_files():
+    """
+    Lista todos los archivos de métricas disponibles en Supabase Storage
+    """
+    try:
+        if not SUPABASE_ENABLED or not supabase_storage:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de Supabase Storage no está disponible"
+            )
+        
+        files = supabase_storage.list_metrics_files()
+        
+        return {
+            "status": "success",
+            "source": "supabase_storage",
+            "files": files,
+            "total_files": len(files),
+            "retrieved_at": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error al listar archivos en Supabase: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/portfolio/supabase/health")
+async def supabase_health_check():
+    """
+    Verifica el estado de la conexión con Supabase Storage
+    """
+    try:
+        if not SUPABASE_ENABLED or not supabase_storage:
+            return {
+                "status": "disabled",
+                "message": "Servicio de Supabase Storage no está habilitado",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        health_status = supabase_storage.health_check()
+        return health_status
+        
+    except Exception as e:
+        logger.error(f"Error en health check de Supabase: {str(e)}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
         }

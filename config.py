@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     SERPER_API_KEY: Optional[str] = None
+    
+    # Supabase Settings
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_ANON_KEY: Optional[str] = None
+    SUPABASE_SERVICE_ROLE: Optional[str] = None
+    SUPABASE_BUCKET_NAME: Optional[str] = "portfolio-files"
+    SUPABASE_BASE_PREFIX: Optional[str] = "Graficos"
+    ENABLE_SUPABASE_UPLOAD: bool = True
+    SUPABASE_CLEANUP_AFTER_TESTS: bool = False
 
     class Config:
         env_file = ".env"

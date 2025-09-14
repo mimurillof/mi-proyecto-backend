@@ -174,10 +174,11 @@ class SupabaseStorageService:
             'correlation_matrix': 'matriz_correlacion_interactiva.html',
             'drawdown_underwater': 'drawdown_underwater_interactivo.html',
             'breakdown_chart': 'breakdown_chart_interactivo.html',
-            'efficient_frontier': 'efficient_frontier_interactive.html',
-            'portfolio_growth': 'portfolio_growth_interactive.html',
+            'efficient_frontier': 'efficient_frontier.html',  # Corregido según Supabase Storage
+            'portfolio_growth': 'portfolio_growth.html',  # Corregido según Supabase Storage
             'monte_carlo_distribution': 'monte_carlo_distribution.html',
-            'monte_carlo_trajectories': 'monte_carlo_trajectories.html'
+            'monte_carlo_trajectories': 'monte_carlo_simulation.html',  # Corregido según Supabase Storage
+            'msr_portfolio': 'msr_treemap.html'  # Nuevo gráfico agregado
         }
         
         filename = chart_mapping.get(chart_name)

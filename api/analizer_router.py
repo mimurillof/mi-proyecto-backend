@@ -199,14 +199,69 @@ async def list_files() -> Dict[str, List[str]]:
 
 @router.get("/file/{filename}")
 async def get_file(filename: str):
-    """Sirve un archivo generado (html/png/json/md) desde el directorio del analizador."""
+    """
+    Sirve un archivo HTML desde Supabase Storage con fallback a archivos locales.
+    Prioriza Supabase Storage para gráficos HTML.
+    """
     _ensure_environment()
     allowed_ext = {".html", ".png", ".json", ".md"}
     path = _safe_path_in_analyzer_dir(filename)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    
     if path.suffix.lower() not in allowed_ext:
         raise HTTPException(status_code=400, detail="Extensión no permitida")
+    
+    # Para archivos HTML, intentar servir desde Supabase Storage primero
+    if filename.endswith('.html'):
+        try:
+            # Importar servicio de Supabase Storage
+            from services.supabase_storage import get_supabase_storage
+            from config import settings
+            from fastapi.responses import HTMLResponse
+            
+            supabase_storage = get_supabase_storage(settings)
+            if supabase_storage:
+                # Mapear nombres de archivo a los de Supabase Storage
+                supabase_filename_mapping = {
+                    'efficient_frontier_interactive.html': 'efficient_frontier.html',
+                    'portfolio_growth_interactive.html': 'portfolio_growth.html',
+                    'monte_carlo_trajectories.html': 'monte_carlo_simulation.html',
+                    'msr_portfolio_treemap_original.html': 'msr_treemap.html',
+                    'rendimiento_acumulado_interactivo.html': 'rendimiento_acumulado_interactivo.html',
+                    'donut_chart_interactivo.html': 'donut_chart_interactivo.html',
+                    'matriz_correlacion_interactiva.html': 'matriz_correlacion_interactiva.html',
+                    'drawdown_underwater_interactivo.html': 'drawdown_underwater_interactivo.html',
+                    'breakdown_chart_interactivo.html': 'breakdown_chart_interactivo.html',
+                    'monte_carlo_distribution.html': 'monte_carlo_distribution.html'
+                }
+                
+                # Obtener el nombre correcto en Supabase
+                supabase_filename = supabase_filename_mapping.get(filename, filename)
+                
+                try:
+                    # Construir la ruta completa en Supabase
+                    file_path = f"Graficos/{supabase_filename}"
+                    
+                    # Descargar el archivo HTML desde Supabase Storage
+                    response = supabase_storage.client.storage.from_(supabase_storage.bucket_name).download(file_path)
+                    
+                    if response:
+                        html_content = response.decode('utf-8')
+                        print(f"✅ Sirviendo {filename} desde Supabase Storage ({supabase_filename})")
+                        return HTMLResponse(content=html_content)
+                        
+                except Exception as supabase_error:
+                    print(f"⚠️ Error Supabase para {filename}: {str(supabase_error)}")
+                    # Continuar al fallback local
+                    
+        except Exception as import_error:
+            print(f"⚠️ Error importando Supabase para {filename}: {str(import_error)}")
+            # Continuar al fallback local
+    
+    # Fallback: servir archivo local
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    
+    print(f"📁 Sirviendo {filename} desde archivos locales (fallback)")
     return FileResponse(str(path))
 
 

@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     SERPER_API_KEY: Optional[str] = None
     
+    # Chat Agent Service Settings (Remote)
+    CHAT_AGENT_SERVICE_URL: str = "http://localhost:8001"
+    CHAT_AGENT_TIMEOUT: int = 30
+    CHAT_AGENT_RETRIES: int = 3
+    
     # Supabase Settings
     SUPABASE_URL: Optional[str] = None
     SUPABASE_ANON_KEY: Optional[str] = None

@@ -10,8 +10,9 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from chat_agent import HorizonAgent
+from config import settings
 from models.schemas import APIResponse
+from services.remote_agent_client import remote_agent_client
 
 router = APIRouter()
 
@@ -23,28 +24,12 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
-    model_used: str
-    tools_used: List[str]
-    metadata: dict
-    urls_processed: List[str]
-    token_usage: dict
-    session_id: str
-
-# Instancia global del agente
-agent: Optional[HorizonAgent] = None
-
-def get_agent() -> HorizonAgent:
-    """Obtiene o crea la instancia del agente"""
-    global agent
-    if agent is None:
-        try:
-            agent = HorizonAgent()
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error inicializando agente: {str(e)}"
-            )
-    return agent
+    model_used: str = "unknown"
+    tools_used: List[str] = []
+    metadata: dict = {}
+    urls_processed: List[str] = []
+    token_usage: dict = {}
+    session_id: str = "unknown"
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_agent(request: ChatRequest):
@@ -52,13 +37,25 @@ async def chat_with_agent(request: ChatRequest):
     Endpoint principal para chat con el agente financiero
     """
     try:
-        horizon_agent = get_agent()
-        response_data = horizon_agent.process_query(
-            request.message, 
-            request.file_path, 
-            request.url
+        # Usar servicio remoto
+        response_data = await remote_agent_client.process_message(
+            message=request.message,
+            file_path=request.file_path,
+            url=request.url
         )
-        return ChatResponse(**response_data)
+        
+        # Normalizar la respuesta para garantizar compatibilidad
+        normalized_response = {
+            "response": response_data.get("response", "Sin respuesta"),
+            "model_used": response_data.get("model_used", "unknown"),
+            "tools_used": response_data.get("tools_used", []),
+            "metadata": response_data.get("metadata", {}),
+            "urls_processed": response_data.get("urls_processed", []),
+            "token_usage": response_data.get("token_usage", {}),
+            "session_id": response_data.get("session_id", "unknown")
+        }
+        
+        return ChatResponse(**normalized_response)
     
     except Exception as e:
         raise HTTPException(
@@ -75,8 +72,6 @@ async def chat_with_file(
     Endpoint para chat con archivo adjunto
     """
     try:
-        horizon_agent = get_agent()
-        
         # Guardar archivo temporalmente
         with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as temp_file:
             content = await file.read()
@@ -84,9 +79,24 @@ async def chat_with_file(
             temp_file_path = temp_file.name
         
         try:
-            # Procesar con el archivo
-            response_data = horizon_agent.process_query(message, temp_file_path)
-            return ChatResponse(**response_data)
+            # Usar servicio remoto
+            response_data = await remote_agent_client.process_message(
+                message=message,
+                file_path=temp_file_path
+            )
+            
+            # Normalizar la respuesta
+            normalized_response = {
+                "response": response_data.get("response", "Sin respuesta"),
+                "model_used": response_data.get("model_used", "unknown"),
+                "tools_used": response_data.get("tools_used", []),
+                "metadata": response_data.get("metadata", {}),
+                "urls_processed": response_data.get("urls_processed", []),
+                "token_usage": response_data.get("token_usage", {}),
+                "session_id": response_data.get("session_id", "unknown")
+            }
+            
+            return ChatResponse(**normalized_response)
         finally:
             # Limpiar archivo temporal
             import os
@@ -105,8 +115,8 @@ async def get_agent_status():
     Obtiene el estado del agente
     """
     try:
-        horizon_agent = get_agent()
-        status = horizon_agent.get_status()
+        # Verificar estado del servicio remoto
+        status = await remote_agent_client.get_status()
         return status
     
     except Exception as e:
@@ -121,25 +131,18 @@ async def health_check():
     Health check del agente
     """
     try:
-        # Verificar variables de entorno
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            raise HTTPException(
-                status_code=503,
-                detail="API Key no configurada"
-            )
-        
-        # Intentar obtener agente
-        horizon_agent = get_agent()
+        # Verificar servicio remoto
+        remote_status = await remote_agent_client.health_check()
         
         return APIResponse(
-            success=True,
-            message="Agente operativo",
+            success=remote_status.get("status") == "healthy",
+            message="Servicio de agente remoto",
             data={
-                "status": "healthy",
-                "agent_active": True,
-                "version": "3.0",
-                "models": ["gemini-2.5-flash", "gemini-2.5-pro"]
+                "status": remote_status.get("status", "unknown"),
+                "service_url": settings.CHAT_AGENT_SERVICE_URL,
+                "remote_service": True,
+                "version": remote_status.get("version", "unknown"),
+                "models": remote_status.get("models_available", [])
             }
         )
     
@@ -159,9 +162,23 @@ async def search_financial_news(query: str = Form(...)):
     Buscar noticias financieras
     """
     try:
-        horizon_agent = get_agent()
-        response_data = horizon_agent.process_query(query)
-        return ChatResponse(**response_data)
+        # Usar servicio remoto
+        response_data = await remote_agent_client.process_message(
+            message=query
+        )
+        
+        # Normalizar la respuesta
+        normalized_response = {
+            "response": response_data.get("response", "Sin respuesta"),
+            "model_used": response_data.get("model_used", "unknown"),
+            "tools_used": response_data.get("tools_used", []),
+            "metadata": response_data.get("metadata", {}),
+            "urls_processed": response_data.get("urls_processed", []),
+            "token_usage": response_data.get("token_usage", {}),
+            "session_id": response_data.get("session_id", "unknown")
+        }
+        
+        return ChatResponse(**normalized_response)
     
     except Exception as e:
         raise HTTPException(
@@ -178,9 +195,24 @@ async def analyze_url(
     Analizar una URL específica
     """
     try:
-        horizon_agent = get_agent()
-        response_data = horizon_agent.process_query(query, None, url)
-        return ChatResponse(**response_data)
+        # Usar servicio remoto
+        response_data = await remote_agent_client.process_message(
+            message=query,
+            url=url
+        )
+        
+        # Normalizar la respuesta
+        normalized_response = {
+            "response": response_data.get("response", "Sin respuesta"),
+            "model_used": response_data.get("model_used", "unknown"),
+            "tools_used": response_data.get("tools_used", []),
+            "metadata": response_data.get("metadata", {}),
+            "urls_processed": response_data.get("urls_processed", []),
+            "token_usage": response_data.get("token_usage", {}),
+            "session_id": response_data.get("session_id", "unknown")
+        }
+        
+        return ChatResponse(**normalized_response)
     
     except Exception as e:
         raise HTTPException(
@@ -198,14 +230,15 @@ async def predict_trend(
     Predice tendencias financieras usando el agente
     """
     try:
-        horizon_agent = get_agent()
-        
         # Crear consulta para predicción
         query = f"Analiza la tendencia de {symbol} para los próximos {period}"
         if include_news:
             query += ". Incluye análisis de noticias recientes y sentimiento del mercado."
         
-        response_data = horizon_agent.process_query(query)
+        # Usar servicio remoto
+        response_data = await remote_agent_client.process_message(
+            message=query
+        )
         
         return {
             "symbol": symbol,

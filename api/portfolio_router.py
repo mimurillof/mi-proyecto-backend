@@ -459,31 +459,37 @@ async def get_latest_analysis_timestamp():
     Utilizado por el frontend para detectar actualizaciones automáticas
     """
     try:
+        # 1) Preferir Supabase si está disponible
+        if SUPABASE_ENABLED and supabase_storage:
+            try:
+                data = await supabase_storage.read_metrics_json("api_response_B.json")
+                file_info = supabase_storage.get_file_info("api_response_B.json")
+                return {
+                    "file_modification_time": file_info.get("last_modified"),
+                    "internal_timestamp": data.get("timestamp"),
+                    "file_path": file_info.get("full_path"),
+                    "source": "supabase_storage",
+                }
+            except Exception as e:
+                logger.warning(f"Fallo al obtener timestamp desde Supabase, se intenta fallback local: {e}")
+        
+        # 2) Fallback a archivos locales si existen
         latest_json = get_latest_json_file()
+        if latest_json and os.path.exists(latest_json):
+            modification_time = os.path.getmtime(latest_json)
+            timestamp = datetime.fromtimestamp(modification_time)
+            with open(latest_json, 'r', encoding='utf-8') as file:
+                data = json.load(file)
+                internal_timestamp = data.get("timestamp")
+            return {
+                "file_modification_time": timestamp.isoformat(),
+                "internal_timestamp": internal_timestamp,
+                "file_path": os.path.basename(latest_json),
+                "source": "local_files",
+            }
         
-        if not latest_json:
-            raise HTTPException(
-                status_code=404,
-                detail="No se encontraron archivos de análisis"
-            )
-        
-        # Obtener la fecha de modificación del archivo
-        modification_time = os.path.getmtime(latest_json)
-        timestamp = datetime.fromtimestamp(modification_time)
-        
-        # Leer también el timestamp interno del JSON para mayor precisión
-        with open(latest_json, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-            internal_timestamp = data.get("timestamp")
-        
-        response_data = {
-            "file_modification_time": timestamp.isoformat(),
-            "internal_timestamp": internal_timestamp,
-            "file_path": os.path.basename(latest_json)
-        }
-        
-        logger.info(f"Timestamp del último análisis: {timestamp}")
-        return response_data
+        # 3) Si no hay datos locales y Supabase falló
+        raise HTTPException(status_code=404, detail="No se encontraron análisis ni en Supabase ni localmente")
         
     except Exception as e:
         logger.error(f"Error al obtener timestamp: {str(e)}")
@@ -498,16 +504,38 @@ async def portfolio_health_check():
     Endpoint de salud para verificar la disponibilidad del Portfolio Analyzer
     """
     try:
+        # 1) Preferir estado de Supabase si está habilitado
+        if SUPABASE_ENABLED and supabase_storage:
+            status_info = supabase_storage.health_check()
+            # Intentar también verificar existencia del JSON y listado de gráficos
+            try:
+                file_info = supabase_storage.get_file_info("api_response_B.json")
+                has_recent_data = file_info is not None
+            except Exception:
+                has_recent_data = False
+            try:
+                charts = supabase_storage.list_chart_files()
+            except Exception:
+                charts = []
+            return {
+                "status": "healthy" if status_info.get("status") == "healthy" else status_info.get("status", "warning"),
+                "outputs_directory_exists": os.path.exists(PORTFOLIO_OUTPUTS_DIR),
+                "outputs_directory_path": PORTFOLIO_OUTPUTS_DIR,
+                "has_recent_analysis": has_recent_data,
+                "latest_file_age_hours": None,
+                "available_charts": [c.get("chart_type") or c.get("name") for c in charts],
+                "source": "supabase_storage",
+            }
+
+        # 2) Fallback al estado basado en archivos locales
         outputs_dir_exists = os.path.exists(PORTFOLIO_OUTPUTS_DIR)
         latest_json = get_latest_json_file()
         has_recent_data = latest_json is not None
-        
-        if has_recent_data:
+        if has_recent_data and os.path.exists(latest_json):
             file_age_seconds = datetime.now().timestamp() - os.path.getmtime(latest_json)
             file_age_hours = file_age_seconds / 3600
         else:
             file_age_hours = None
-        
         return {
             "status": "healthy" if outputs_dir_exists and has_recent_data else "warning",
             "outputs_directory_exists": outputs_dir_exists,
@@ -516,11 +544,12 @@ async def portfolio_health_check():
             "latest_file_age_hours": file_age_hours,
             "available_charts": [
                 'cumulative_returns',
-                'composition_donut', 
+                'composition_donut',
                 'correlation_matrix',
                 'drawdown_underwater',
-                'breakdown_chart'
-            ]
+                'breakdown_chart',
+            ],
+            "source": "local_files",
         }
         
     except Exception as e:

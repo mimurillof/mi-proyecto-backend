@@ -71,7 +71,17 @@ def _list_files_by_ext() -> Dict[str, List[str]]:
 @router.get("/health")
 async def health() -> Dict[str, Any]:
     try:
-        _ensure_environment()
+        # No fallar si el directorio no existe; reportar estado informativo
+        if not ANALYZER_DIR.exists() or not SCRIPT_PATH.exists():
+            return {
+                "status": "missing",
+                "analyzer_dir": str(ANALYZER_DIR),
+                "script_path": str(SCRIPT_PATH),
+                "has_results_json": False,
+                "has_report_md": False,
+                "files": {"html": [], "png": [], "json": [], "md": []},
+            }
+
         files = _list_files_by_ext()
         has_json = RESULTS_JSON_NAME in files.get("json", []) or (ANALYZER_DIR / RESULTS_JSON_NAME).exists()
         has_md = REPORT_MD_NAME in files.get("md", []) or (ANALYZER_DIR / REPORT_MD_NAME).exists()
@@ -193,7 +203,9 @@ async def get_results() -> Dict[str, Any]:
 
 @router.get("/list-files")
 async def list_files() -> Dict[str, List[str]]:
-    _ensure_environment()
+    # Si la carpeta no existe, devolvemos listas vacías en vez de fallar
+    if not ANALYZER_DIR.exists():
+        return {"html": [], "png": [], "json": [], "md": []}
     return _list_files_by_ext()
 
 
@@ -203,8 +215,8 @@ async def get_file(filename: str):
     Sirve un archivo HTML desde Supabase Storage con fallback a archivos locales.
     Prioriza Supabase Storage para gráficos HTML.
     """
-    _ensure_environment()
     allowed_ext = {".html", ".png", ".json", ".md"}
+    # Construir path local de manera segura, aunque la carpeta no exista
     path = _safe_path_in_analyzer_dir(filename)
     
     if path.suffix.lower() not in allowed_ext:
@@ -257,7 +269,7 @@ async def get_file(filename: str):
             print(f"⚠️ Error importando Supabase para {filename}: {str(import_error)}")
             # Continuar al fallback local
     
-    # Fallback: servir archivo local
+    # Fallback: servir archivo local (solo si existe; no requerimos que exista la carpeta base)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     

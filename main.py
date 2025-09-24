@@ -5,6 +5,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api import user_router, auth_router, ai_router
+from api.ribbon_router import router as ribbon_router
 from api.analizer_router import router as analizer_router
 from api.portfolio_router import router as portfolio_router
 from config import settings
@@ -74,6 +75,12 @@ app.include_router(
 app.include_router(
     analizer_router,
     tags=["Portfolio Analizer v2"],
+)
+
+# Ribbon actions (summary/performance/forecast/alerts/custom report)
+app.include_router(
+    ribbon_router,
+    tags=["Ribbon Actions"],
 )
 
 if __name__ == "__main__":

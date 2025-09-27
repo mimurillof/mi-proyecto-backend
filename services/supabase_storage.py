@@ -12,13 +12,17 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 
+from urllib.parse import quote
+
+import httpx
+
 try:
     from supabase import create_client, Client  # type: ignore
 except ImportError:  # pragma: no cover
     create_client = None  # type: ignore
     Client = Any  # type: ignore
 
-REPORT_FILENAME = "informe_estrategico.json"
+REPORT_FILENAME = "estructura_informe.json"
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -68,12 +72,11 @@ class SupabaseStorageService:
         return str(prefix).strip().strip("/")
 
     def get_metrics_file_path(self, filename: str = "api_response_B.json") -> str:
-        """
-        Construye el path completo del archivo en Supabase Storage
-        
+        """Construye el path completo del archivo en Supabase Storage.
+
         Args:
             filename: Nombre del archivo (por defecto: api_response_B.json)
-            
+
         Returns:
             str: Path completo en el bucket
         """
@@ -111,43 +114,44 @@ class SupabaseStorageService:
             }
 
         storage_path = self.get_report_file_path()
+        base_url = (self.supabase_url or "").rstrip("/")
+        if not base_url:
+            logger.error("SUPABASE_URL no está configurado correctamente para la carga REST")
+            return {
+                "status": "error",
+                "message": "SUPABASE_URL no está configurado para la carga REST.",
+            }
+
+        object_path = quote(storage_path, safe="")
+        upload_url = f"{base_url}/storage/v1/object/{self.bucket_name}/{object_path}"
+        headers = {
+            "Authorization": f"Bearer {self.supabase_service_role}",
+            "apikey": self.supabase_service_role,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
 
         try:
-            storage = self.client.storage.from_(self.bucket_name)
-            response = storage.upload(
-                storage_path,
-                payload,
-                {"content-type": "application/json"},
-                upsert=True,
-            )
+            response = httpx.put(upload_url, content=payload, headers=headers, timeout=30.0)
         except Exception as exc:
-            logger.exception("Error al subir el informe JSON a Supabase")
+            logger.exception("Error al realizar la petición PUT a Supabase Storage")
             return {
                 "status": "error",
                 "message": f"Error al subir el informe a Supabase: {exc}",
             }
 
-        error_message: Optional[str] = None
-
-        if isinstance(response, dict):
-            error_info = response.get("error") or response.get("Error")
-            if error_info:
-                if isinstance(error_info, dict):
-                    error_message = error_info.get("message") or json.dumps(error_info, ensure_ascii=False)
-                else:
-                    error_message = str(error_info)
-        elif hasattr(response, "error") and response.error:
-            error_obj = getattr(response, "error")
-            error_message = getattr(error_obj, "message", str(error_obj))
-
-        if error_message:
-            logger.error("Supabase devolvió un error durante la carga: %s", error_message)
+        if response.status_code not in (200, 201):
+            logger.error(
+                "Supabase devolvió un código inesperado (%s): %s",
+                response.status_code,
+                response.text,
+            )
             return {
                 "status": "error",
-                "message": f"Supabase devolvió un error durante la carga: {error_message}",
+                "message": f"Supabase devolvió un error durante la carga: {response.status_code} {response.text}",
             }
 
-        logger.info("Informe estratégico guardado en Supabase: %s", storage_path)
+        logger.info("Informe estratégico guardado en Supabase mediante REST: %s", storage_path)
         return {
             "status": "success",
             "message": "El informe ha sido actualizado correctamente en Supabase.",
@@ -486,13 +490,11 @@ def get_supabase_storage(config=None):
 
 def guardar_json_en_supabase(datos_informe: Dict[str, Any], config=None) -> Dict[str, str]:
     """Guarda un informe JSON en Supabase Storage usando upsert y manejo en memoria."""
-    try:
-        service = SupabaseStorageService(config)
-    except Exception as exc:
-        logger.exception("No se pudo inicializar SupabaseStorageService para guardar el informe")
+    service = get_supabase_storage(config)
+    if service is None:
         return {
             "status": "error",
-            "message": f"No se pudo inicializar el servicio de Supabase Storage: {exc}",
+            "message": "No se pudo inicializar el servicio de Supabase Storage.",
         }
 
     return service.save_portfolio_report_json(datos_informe)

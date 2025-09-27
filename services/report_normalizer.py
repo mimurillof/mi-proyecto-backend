@@ -51,6 +51,7 @@ _IMAGE_PX_PER_INCH = 96.0
 _MAX_IMAGE_INCHES = 10.0
 _DEFAULT_IMAGE_WIDTH_INCHES = 6.0
 _MAX_TRANSFORM_WIDTH_PX = 1600
+_IMAGE_ASPECT_RATIO = 16.0 / 9.0
 
 
 def _sanitize_image_dimension(value: float) -> float:
@@ -155,11 +156,14 @@ def ensure_image_sources(
         if isinstance(width_value, (int, float)) and width_value > 0:
             width_inches = _sanitize_image_dimension(width_value)
 
-        block["width"] = float(width_inches or _DEFAULT_IMAGE_WIDTH_INCHES)
+        width_inches = width_inches or _DEFAULT_IMAGE_WIDTH_INCHES
+        block["width"] = float(width_inches)
 
-        height_value = block.get("height")
-        if isinstance(height_value, (int, float)) and height_value > 0:
-            block["height"] = float(_sanitize_image_dimension(height_value))
+        # Forzar relación de aspecto 16:9
+        target_height_inches = width_inches / _IMAGE_ASPECT_RATIO
+        if target_height_inches > _MAX_IMAGE_INCHES:
+            target_height_inches = _MAX_IMAGE_INCHES
+        block["height"] = float(target_height_inches)
 
         supabase_payload: Dict[str, Any] = {
             "bucket": bucket,

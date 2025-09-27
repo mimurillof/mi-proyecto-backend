@@ -56,12 +56,11 @@ def trigger_pdf_generation_task(
         bucket_name = getattr(cfg, "SUPABASE_BUCKET_NAME", None) if cfg is not None else None
         prefix_name = None
         if cfg is not None:
-            prefix_name = getattr(cfg, "SUPABASE_BASE_PREFIX_2", None) or getattr(cfg, "SUPABASE_BASE_PREFIX", None)
+            prefix_name = getattr(cfg, "SUPABASE_BASE_PREFIX", None)
 
         bucket_name = bucket_name or os.getenv("SUPABASE_BUCKET_NAME")
         prefix_name = (
             prefix_name
-            or os.getenv("SUPABASE_BASE_PREFIX_2")
             or os.getenv("SUPABASE_BASE_PREFIX")
         )
 

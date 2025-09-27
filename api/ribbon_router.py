@@ -80,7 +80,7 @@ async def trigger_portfolio_report(
                 try:
                     normalized_report = normalize_report_for_schema(raw_report)
                     bucket_name = getattr(settings, "SUPABASE_BUCKET_NAME", None) if settings else None
-                    prefix_name = getattr(settings, "SUPABASE_BASE_PREFIX_2", None) or getattr(settings, "SUPABASE_BASE_PREFIX", None)
+                    prefix_name = getattr(settings, "SUPABASE_BASE_PREFIX", None) if settings else None
                     normalized_report = ensure_image_sources(
                         normalized_report,
                         bucket=bucket_name,

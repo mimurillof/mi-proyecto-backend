@@ -92,10 +92,13 @@ class ReportNormalizerTests(unittest.TestCase):
         }
 
         normalized = normalize_report_for_schema(raw_report)
-        image_block = normalized["content"][0]
+        enhanced = ensure_image_sources(normalized, bucket="portfolio-files", prefix="Graficos")
+        image_block = enhanced["content"][0]
 
         self.assertLessEqual(image_block["width"], 10.0)
         self.assertLessEqual(image_block["height"], 10.0)
+        expected_height = image_block["width"] * (9.0 / 16.0)
+        self.assertAlmostEqual(image_block["height"], expected_height, places=4)
         self.assertNotIn("headers", image_block)
         self.assertNotIn("rows", image_block)
         self.assertNotIn("items", image_block)

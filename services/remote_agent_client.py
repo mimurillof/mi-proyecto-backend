@@ -15,11 +15,18 @@ class RemoteChatAgentClient:
         self.timeout = settings.CHAT_AGENT_TIMEOUT
         self.retries = settings.CHAT_AGENT_RETRIES
     
-    async def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
+    async def _make_request(
+        self,
+        method: str,
+        endpoint: str,
+        *,
+        timeout: Optional[float] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """Hacer request HTTP con reintentos"""
         for attempt in range(self.retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with httpx.AsyncClient(timeout=timeout or self.timeout) as client:
                     response = await client.request(
                         method=method,
                         url=f"{self.base_url}{endpoint}",
@@ -86,6 +93,29 @@ class RemoteChatAgentClient:
         
         return await self._make_request("POST", "/chat/upload", files=files, data=data)
     
+    async def generate_portfolio_report(
+        self,
+        model_preference: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Solicitar la generación de un informe de portafolio al agente remoto."""
+        payload: Dict[str, Any] = {
+            "context": context or {},
+        }
+
+        if model_preference:
+            payload["model_preference"] = model_preference
+        if session_id:
+            payload["session_id"] = session_id
+
+        return await self._make_request(
+            "POST",
+            "/acciones/generar_informe_portafolio",
+            json=payload,
+            timeout=180.0,
+        )
+
     async def get_status(self) -> Dict[str, Any]:
         """Obtener estado del agente"""
         return await self._make_request("GET", "/status")

@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE: Optional[str] = None
     SUPABASE_BUCKET_NAME: Optional[str] = "portfolio-files"
     SUPABASE_BASE_PREFIX: Optional[str] = "Graficos"
+    SUPABASE_BASE_PREFIX_2: Optional[str] = None
     ENABLE_SUPABASE_UPLOAD: bool = True
     SUPABASE_CLEANUP_AFTER_TESTS: bool = False
 

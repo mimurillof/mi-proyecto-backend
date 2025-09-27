@@ -10,8 +10,15 @@ import os
 import json
 import logging
 from typing import Dict, Any, Optional
-from supabase import create_client, Client
 from datetime import datetime
+
+try:
+    from supabase import create_client, Client  # type: ignore
+except ImportError:  # pragma: no cover
+    create_client = None  # type: ignore
+    Client = Any  # type: ignore
+
+REPORT_FILENAME = "informe_estrategico.json"
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -31,21 +38,35 @@ class SupabaseStorageService:
             self.supabase_service_role = config.SUPABASE_SERVICE_ROLE
             self.bucket_name = config.SUPABASE_BUCKET_NAME or "portfolio-files"
             self.base_prefix = config.SUPABASE_BASE_PREFIX or "Graficos"
+            self.base_prefix_reports = self._normalize_prefix(getattr(config, "SUPABASE_BASE_PREFIX_2", None))
         else:
             # Fallback a variables de entorno
             self.supabase_url = os.getenv("SUPABASE_URL")
             self.supabase_service_role = os.getenv("SUPABASE_SERVICE_ROLE")
             self.bucket_name = os.getenv("SUPABASE_BUCKET_NAME", "portfolio-files")
             self.base_prefix = os.getenv("SUPABASE_BASE_PREFIX", "Graficos")
+            self.base_prefix_reports = self._normalize_prefix(os.getenv("SUPABASE_BASE_PREFIX_2"))
+
+        if not self.base_prefix_reports:
+            self.base_prefix_reports = self._normalize_prefix(self.base_prefix)
         
         if not self.supabase_url or not self.supabase_service_role:
             raise ValueError("SUPABASE_URL y SUPABASE_SERVICE_ROLE deben estar configurados en el .env o config")
         
+        if create_client is None:
+            raise ImportError("La librería 'supabase' no está instalada en el entorno actual.")
+
         # Crear cliente de Supabase con service role key
-        self.client: Client = create_client(self.supabase_url, self.supabase_service_role)
+        self.client: Client = create_client(self.supabase_url, self.supabase_service_role)  # type: ignore[arg-type]
         
         logger.info(f"SupabaseStorageService inicializado - Bucket: {self.bucket_name}, Prefix: {self.base_prefix}")
     
+    @staticmethod
+    def _normalize_prefix(prefix: Optional[str]) -> str:
+        if not prefix:
+            return ""
+        return str(prefix).strip().strip("/")
+
     def get_metrics_file_path(self, filename: str = "api_response_B.json") -> str:
         """
         Construye el path completo del archivo en Supabase Storage
@@ -57,6 +78,81 @@ class SupabaseStorageService:
             str: Path completo en el bucket
         """
         return f"{self.base_prefix}/{filename}"
+
+    def get_report_file_path(self, filename: str = REPORT_FILENAME) -> str:
+        """Obtiene la ruta completa del informe estratégico en Storage."""
+        if self.base_prefix_reports:
+            return f"{self.base_prefix_reports}/{filename}"
+        return filename
+
+    def save_portfolio_report_json(self, datos_informe: Dict[str, Any]) -> Dict[str, str]:
+        """Guarda o actualiza el informe JSON del agente en Supabase Storage.
+
+        Args:
+            datos_informe: Diccionario con el informe generado por el agente.
+
+        Returns:
+            dict: Resultado de la operación, indicando éxito o error.
+        """
+        if not isinstance(datos_informe, dict):
+            logger.error("El informe recibido no es un diccionario válido")
+            return {
+                "status": "error",
+                "message": "El parámetro 'datos_informe' debe ser un diccionario.",
+            }
+
+        try:
+            payload = json.dumps(datos_informe, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            logger.exception("No se pudo serializar el informe a JSON")
+            return {
+                "status": "error",
+                "message": f"No se pudo serializar el informe a JSON: {exc}",
+            }
+
+        storage_path = self.get_report_file_path()
+
+        try:
+            storage = self.client.storage.from_(self.bucket_name)
+            response = storage.upload(
+                storage_path,
+                payload,
+                {"content-type": "application/json"},
+                upsert=True,
+            )
+        except Exception as exc:
+            logger.exception("Error al subir el informe JSON a Supabase")
+            return {
+                "status": "error",
+                "message": f"Error al subir el informe a Supabase: {exc}",
+            }
+
+        error_message: Optional[str] = None
+
+        if isinstance(response, dict):
+            error_info = response.get("error") or response.get("Error")
+            if error_info:
+                if isinstance(error_info, dict):
+                    error_message = error_info.get("message") or json.dumps(error_info, ensure_ascii=False)
+                else:
+                    error_message = str(error_info)
+        elif hasattr(response, "error") and response.error:
+            error_obj = getattr(response, "error")
+            error_message = getattr(error_obj, "message", str(error_obj))
+
+        if error_message:
+            logger.error("Supabase devolvió un error durante la carga: %s", error_message)
+            return {
+                "status": "error",
+                "message": f"Supabase devolvió un error durante la carga: {error_message}",
+            }
+
+        logger.info("Informe estratégico guardado en Supabase: %s", storage_path)
+        return {
+            "status": "success",
+            "message": "El informe ha sido actualizado correctamente en Supabase.",
+            "path": storage_path,
+        }
     
     async def read_metrics_json(self, filename: str = "api_response_B.json") -> Dict[str, Any]:
         """
@@ -386,3 +482,17 @@ def get_supabase_storage(config=None):
     if _supabase_storage_instance is None:
         _supabase_storage_instance = create_supabase_storage_service(config)
     return _supabase_storage_instance
+
+
+def guardar_json_en_supabase(datos_informe: Dict[str, Any], config=None) -> Dict[str, str]:
+    """Guarda un informe JSON en Supabase Storage usando upsert y manejo en memoria."""
+    try:
+        service = SupabaseStorageService(config)
+    except Exception as exc:
+        logger.exception("No se pudo inicializar SupabaseStorageService para guardar el informe")
+        return {
+            "status": "error",
+            "message": f"No se pudo inicializar el servicio de Supabase Storage: {exc}",
+        }
+
+    return service.save_portfolio_report_json(datos_informe)

@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     ENABLE_SUPABASE_UPLOAD: bool = True
     SUPABASE_CLEANUP_AFTER_TESTS: bool = False
 
+    # PDF Generation Service
+    PDF_SERVICE_URL: Optional[str] = None
+    INTERNAL_API_KEY: Optional[str] = None
+
     class Config:
         env_file = ".env"
 

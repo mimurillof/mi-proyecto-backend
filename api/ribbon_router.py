@@ -1,13 +1,15 @@
+import json
 import logging
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 try:
     from config import settings  # type: ignore[attr-defined]
 except ImportError:  # pragma: no cover
     settings = None  # type: ignore[assignment]
 
+from services.pdf_generation import trigger_pdf_generation_task
 from services.remote_agent_client import remote_agent_client
 from services.supabase_storage import guardar_json_en_supabase
 
@@ -50,6 +52,7 @@ async def get_alerts():
 
 @router.post("/custom-report")
 async def trigger_portfolio_report(
+    background_tasks: BackgroundTasks,
     payload: Optional[Dict[str, Any]] = None
 ):
     """Solicita al agente remoto la generación de un informe de portafolio."""
@@ -64,6 +67,15 @@ async def trigger_portfolio_report(
         )
 
         storage_result: Dict[str, Any]
+        pdf_payload: Optional[Dict[str, Any]] = None
+
+        if isinstance(report_response, dict):
+            try:
+                pdf_payload = json.loads(json.dumps(report_response, ensure_ascii=False))
+            except (TypeError, ValueError):
+                logger.exception("No se pudo clonar el informe para la generación de PDF")
+                pdf_payload = None
+
         enable_upload = bool(getattr(settings, "ENABLE_SUPABASE_UPLOAD", False))
 
         if enable_upload:
@@ -75,6 +87,14 @@ async def trigger_portfolio_report(
                     "Informe estratégico almacenado en Supabase: %s",
                     storage_result.get("path"),
                 )
+
+                if pdf_payload is not None:
+                    background_tasks.add_task(
+                        trigger_pdf_generation_task,
+                        pdf_payload,
+                        storage_result.get("path"),
+                        config=settings if settings is not None else None,
+                    )
             else:
                 logger.error(
                     "Error al almacenar informe en Supabase: %s",

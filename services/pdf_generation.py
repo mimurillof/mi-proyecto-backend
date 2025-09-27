@@ -9,6 +9,12 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from services.report_normalizer import (
+    normalize_report_for_schema,
+    ensure_image_sources,
+    ReportValidationError,
+)
+
 try:
     from config import settings  # type: ignore[attr-defined]
 except ImportError:  # pragma: no cover
@@ -44,6 +50,34 @@ def trigger_pdf_generation_task(
         return
 
     cfg = _resolve_config(config)
+
+    try:
+        normalized_report = normalize_report_for_schema(report_payload)
+        bucket_name = getattr(cfg, "SUPABASE_BUCKET_NAME", None) if cfg is not None else None
+        prefix_name = None
+        if cfg is not None:
+            prefix_name = getattr(cfg, "SUPABASE_BASE_PREFIX_2", None) or getattr(cfg, "SUPABASE_BASE_PREFIX", None)
+
+        bucket_name = bucket_name or os.getenv("SUPABASE_BUCKET_NAME")
+        prefix_name = (
+            prefix_name
+            or os.getenv("SUPABASE_BASE_PREFIX_2")
+            or os.getenv("SUPABASE_BASE_PREFIX")
+        )
+
+        normalized_report = ensure_image_sources(
+            normalized_report,
+            bucket=bucket_name,
+            prefix=prefix_name,
+            transform_width=800,
+        )
+    except ReportValidationError as exc:
+        logger.error("El informe recibido no cumple con el esquema esperado: %s", exc)
+        return
+    except Exception:  # pragma: no cover - protección adicional
+        logger.exception("Fallo inesperado al normalizar el informe antes del envío al servicio de PDF")
+        return
+
     service_url = None
     api_key = None
 
@@ -68,7 +102,7 @@ def trigger_pdf_generation_task(
     }
 
     payload: Dict[str, Any] = {
-        "json_data": report_payload,
+        "json_data": normalized_report,
         "no_upload": False,
         "log_level": "INFO",
     }

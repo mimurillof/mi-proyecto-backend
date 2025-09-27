@@ -12,6 +12,11 @@ except ImportError:  # pragma: no cover
 from services.pdf_generation import trigger_pdf_generation_task
 from services.remote_agent_client import remote_agent_client
 from services.supabase_storage import guardar_json_en_supabase
+from services.report_normalizer import (
+    normalize_report_for_schema,
+    ensure_image_sources,
+    ReportValidationError,
+)
 
 
 router = APIRouter(prefix="/api/ribbon", tags=["Ribbon Actions"])
@@ -67,20 +72,44 @@ async def trigger_portfolio_report(
         )
 
         storage_result: Dict[str, Any]
-        pdf_payload: Optional[Dict[str, Any]] = None
+        clean_report_payload: Optional[Dict[str, Any]] = None
 
         if isinstance(report_response, dict):
-            try:
-                pdf_payload = json.loads(json.dumps(report_response, ensure_ascii=False))
-            except (TypeError, ValueError):
-                logger.exception("No se pudo clonar el informe para la generación de PDF")
-                pdf_payload = None
+            raw_report = report_response.get("report")
+            if isinstance(raw_report, dict):
+                try:
+                    normalized_report = normalize_report_for_schema(raw_report)
+                    bucket_name = getattr(settings, "SUPABASE_BUCKET_NAME", None) if settings else None
+                    prefix_name = getattr(settings, "SUPABASE_BASE_PREFIX_2", None) or getattr(settings, "SUPABASE_BASE_PREFIX", None)
+                    normalized_report = ensure_image_sources(
+                        normalized_report,
+                        bucket=bucket_name,
+                        prefix=prefix_name,
+                        transform_width=800,
+                    )
+                    clean_report_payload = json.loads(json.dumps(normalized_report, ensure_ascii=False))
+                except ReportValidationError as exc:
+                    logger.error("El informe del agente no cumple el esquema esperado: %s", exc)
+                    clean_report_payload = None
+                except (TypeError, ValueError):
+                    logger.exception("No se pudo serializar el informe normalizado para generación de PDF")
+                    clean_report_payload = None
+            else:
+                logger.error("La respuesta del agente no contiene un objeto 'report' válido")
+        else:
+            logger.error("Respuesta inesperada del agente remoto: tipo %s", type(report_response))
 
         enable_upload = bool(getattr(settings, "ENABLE_SUPABASE_UPLOAD", False))
 
         if enable_upload:
             config_obj = settings if settings is not None else None
-            storage_result = guardar_json_en_supabase(report_response, config_obj)
+            if clean_report_payload is not None:
+                storage_result = guardar_json_en_supabase(clean_report_payload, config_obj)
+            else:
+                storage_result = {
+                    "status": "error",
+                    "message": "No se pudo extraer el informe para guardarlo en Supabase.",
+                }
 
             if storage_result.get("status") == "success":
                 logger.info(
@@ -88,10 +117,10 @@ async def trigger_portfolio_report(
                     storage_result.get("path"),
                 )
 
-                if pdf_payload is not None:
+                if clean_report_payload is not None:
                     background_tasks.add_task(
                         trigger_pdf_generation_task,
-                        pdf_payload,
+                        clean_report_payload,
                         storage_result.get("path"),
                         config=settings if settings is not None else None,
                     )
@@ -107,8 +136,11 @@ async def trigger_portfolio_report(
             }
 
         if isinstance(report_response, dict):
-            report_response["storage_result"] = storage_result
-            return report_response
+            response_copy = json.loads(json.dumps(report_response, ensure_ascii=False))
+            if clean_report_payload is not None:
+                response_copy["report"] = clean_report_payload
+            response_copy["storage_result"] = storage_result
+            return response_copy
 
         return {
             "report": report_response,

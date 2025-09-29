@@ -19,6 +19,8 @@ start-backend.bat
 
 # Documentación innecesaria para producción
 README_BACKEND.md
+README.md
+HEROKU_DEPLOY.md
 
 # Outputs y archivos temporales
 outputs/

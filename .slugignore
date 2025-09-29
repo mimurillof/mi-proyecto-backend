@@ -1,0 +1,32 @@
+# Archivos de prueba
+tests/
+*.pyc
+__pycache__/
+
+# Entorno virtual
+venv/
+.venv/
+env/
+
+# Archivos de configuración local
+.env
+.env.local
+
+# Archivos de verificación y scripts
+verify_separation.py
+start-backend.sh
+start-backend.bat
+
+# Documentación innecesaria para producción
+README_BACKEND.md
+
+# Outputs y archivos temporales
+outputs/
+
+# Git
+.git/
+.gitignore
+
+# Docker (no necesario en Heroku)
+Dockerfile
+docker-compose.yml

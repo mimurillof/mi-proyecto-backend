@@ -12,6 +12,14 @@ class Settings(BaseSettings):
     
     # CORS Settings
     CLIENT_ORIGIN: str = "http://localhost:5173"
+    CORS_ORIGINS: list = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        # Producción - Chat Agent Service
+        "https://chat-agent-horizon-cc5e16d4b37e.herokuapp.com"
+    ]
     
     # Application Settings
     API_V1_STR: str = "/api"
@@ -26,9 +34,17 @@ class Settings(BaseSettings):
     SERPER_API_KEY: Optional[str] = None
     
     # Chat Agent Service Settings (Remote)
+    # En desarrollo usa localhost, en producción usa Heroku
     CHAT_AGENT_SERVICE_URL: str = "http://localhost:8001"
+    CHAT_AGENT_SERVICE_URL_PROD: str = "https://chat-agent-horizon-cc5e16d4b37e.herokuapp.com"
     CHAT_AGENT_TIMEOUT: int = 30
     CHAT_AGENT_RETRIES: int = 3
+    
+    def get_chat_agent_url(self) -> str:
+        """Obtener la URL del servicio de chat según el entorno"""
+        if self.ENVIRONMENT == "production":
+            return self.CHAT_AGENT_SERVICE_URL_PROD
+        return self.CHAT_AGENT_SERVICE_URL
     
     # Supabase Settings
     SUPABASE_URL: Optional[str] = None

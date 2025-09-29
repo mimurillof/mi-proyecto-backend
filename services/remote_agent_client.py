@@ -11,7 +11,8 @@ class RemoteChatAgentClient:
     """Cliente para comunicarse con el servicio remoto del agente de chat"""
     
     def __init__(self):
-        self.base_url = settings.CHAT_AGENT_SERVICE_URL.rstrip('/')
+        # Usa get_chat_agent_url() para obtener la URL correcta según el entorno
+        self.base_url = settings.get_chat_agent_url().rstrip('/')
         self.timeout = settings.CHAT_AGENT_TIMEOUT
         self.retries = settings.CHAT_AGENT_RETRIES
     

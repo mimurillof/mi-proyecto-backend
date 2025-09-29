@@ -18,11 +18,12 @@ app = FastAPI(
 )
 
 # Configuración de CORS
-origins = [
+# Usar la lista de orígenes desde settings que incluye desarrollo y producción
+origins = settings.CORS_ORIGINS if hasattr(settings, 'CORS_ORIGINS') else [
     settings.CLIENT_ORIGIN,
-    "http://localhost:3000",  # React dev server alternative
-    "http://localhost:5173",  # Vite dev server
-    "http://127.0.0.1:5173",  # Vite dev server alternative
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
 app.add_middleware(

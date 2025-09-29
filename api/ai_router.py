@@ -139,7 +139,7 @@ async def health_check():
             message="Servicio de agente remoto",
             data={
                 "status": remote_status.get("status", "unknown"),
-                "service_url": settings.CHAT_AGENT_SERVICE_URL,
+                "service_url": settings.get_chat_agent_url(),
                 "remote_service": True,
                 "version": remote_status.get("version", "unknown"),
                 "models": remote_status.get("models_available", [])

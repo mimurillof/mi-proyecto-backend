@@ -19,12 +19,18 @@ app = FastAPI(
 
 # Configuración de CORS
 # Usar la lista de orígenes desde settings que incluye desarrollo y producción
-origins = settings.CORS_ORIGINS if hasattr(settings, 'CORS_ORIGINS') else [
-    settings.CLIENT_ORIGIN,
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+if hasattr(settings, 'CORS_ORIGINS'):
+    origins = list(settings.CORS_ORIGINS)  # Crear copia de la lista
+    # Agregar CLIENT_ORIGIN si no está en la lista
+    if settings.CLIENT_ORIGIN not in origins:
+        origins.append(settings.CLIENT_ORIGIN)
+else:
+    origins = [
+        settings.CLIENT_ORIGIN,
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
 
 app.add_middleware(
     CORSMiddleware,

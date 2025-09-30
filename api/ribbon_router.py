@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api/ribbon", tags=["Ribbon Actions"])
 logger = logging.getLogger(__name__)
 
 # Almacenamiento en memoria para estados de reportes
-# En producción, considerar usar Redis o PostgreSQL
+# Con 1 worker, todos los requests comparten la misma memoria
 report_statuses: Dict[str, Dict[str, Any]] = {}
 
 
@@ -69,7 +69,7 @@ async def process_report_generation(
 ):
     """
     Función auxiliar que procesa la generación del reporte en background.
-    Actualiza el estado en report_statuses.
+    Actualiza el estado en report_statuses (memoria compartida con 1 worker).
     """
     try:
         # Actualizar estado a "processing"

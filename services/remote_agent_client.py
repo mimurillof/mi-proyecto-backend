@@ -100,7 +100,10 @@ class RemoteChatAgentClient:
         context: Optional[Dict[str, Any]] = None,
         session_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Solicitar la generación de un informe de portafolio al agente remoto."""
+        """
+        Solicitar la generación de un informe de portafolio al agente remoto.
+        Usa procesamiento asíncrono con polling para evitar timeouts.
+        """
         payload: Dict[str, Any] = {
             "context": context or {},
         }
@@ -110,12 +113,49 @@ class RemoteChatAgentClient:
         if session_id:
             payload["session_id"] = session_id
 
-        return await self._make_request(
+        # 1. Iniciar generación (responde inmediatamente)
+        start_response = await self._make_request(
             "POST",
-            "/acciones/generar_informe_portafolio",
+            "/acciones/generar_informe_portafolio/start",
             json=payload,
-            timeout=180.0,
+            timeout=10.0,  # Solo para iniciar
         )
+        
+        task_id = start_response.get("task_id")
+        if not task_id:
+            raise Exception("No se recibió task_id del chat agent")
+        
+        # 2. Hacer polling hasta que complete
+        max_attempts = 60  # 60 intentos * 3 segundos = 3 minutos máximo
+        for attempt in range(max_attempts):
+            await asyncio.sleep(3)  # Esperar 3 segundos entre polls
+            
+            try:
+                status_response = await self._make_request(
+                    "GET",
+                    f"/acciones/generar_informe_portafolio/status/{task_id}",
+                    timeout=10.0,
+                )
+                
+                status = status_response.get("status")
+                
+                if status == "completed":
+                    # Tarea completada exitosamente
+                    return status_response.get("result")
+                
+                elif status == "error":
+                    # Error en la generación
+                    error_msg = status_response.get("error", "Error desconocido")
+                    raise Exception(f"Error en chat agent: {error_msg}")
+                
+                # Si está en "pending" o "processing", continuar polling
+                
+            except Exception as e:
+                # Si falla el polling, continuar intentando
+                if attempt == max_attempts - 1:
+                    raise Exception(f"Timeout esperando resultado del chat agent: {str(e)}")
+        
+        raise Exception("Timeout: el chat agent no completó la generación en el tiempo esperado")
 
     async def get_status(self) -> Dict[str, Any]:
         """Obtener estado del agente"""

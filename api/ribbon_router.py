@@ -77,8 +77,9 @@ async def process_report_generation(
         report_statuses[report_id]["updated_at"] = datetime.now().isoformat()
         
         # Generar reporte con el agente remoto
+        # Ahora usa procesamiento asíncrono, puede usar Gemini Pro sin timeout
         report_response = await remote_agent_client.generate_portfolio_report(
-            model_preference=model_preference,
+            model_preference=model_preference,  # Usará Gemini Pro si no se especifica
             context=context,
             session_id=session_id,
         )

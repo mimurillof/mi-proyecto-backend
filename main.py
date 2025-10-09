@@ -8,7 +8,12 @@ from api import user_router, auth_router, ai_router
 from api.ribbon_router import router as ribbon_router
 from api.analizer_router import router as analizer_router
 from api.portfolio_router import router as portfolio_router
+from api.portfolio_manager_router import router as portfolio_manager_router
 from config import settings
+from services.portfolio_manager_service import (
+    shutdown_portfolio_manager,
+    startup_portfolio_manager,
+)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -39,6 +44,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def on_startup() -> None:
+    await startup_portfolio_manager()
+
+
+@app.on_event("shutdown")
+async def on_shutdown() -> None:
+    await shutdown_portfolio_manager()
 
 # Health check endpoint
 @app.get("/")
@@ -76,6 +90,10 @@ app.include_router(
     portfolio_router, 
     tags=["Portfolio"], 
     prefix=""  # Ya incluye el prefijo /api/portfolio en el router
+)
+
+app.include_router(
+    portfolio_manager_router,
 )
 
 # Portfolio Analizer v2 (script integration)

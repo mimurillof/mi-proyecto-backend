@@ -97,4 +97,4 @@ Esta implementación reemplaza completamente el backend anterior de Node.js/Expr
 - ✅ Seguridad JWT mejorada
 - ✅ ORM moderno con SQLAlchemy 2.0
 
-El servidor está ejecutándose en: http://localhost:8000 
+El servidor está ejecutándose en: http://localhost:8000

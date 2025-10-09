@@ -53,12 +53,27 @@ class Settings(BaseSettings):
     SUPABASE_BUCKET_NAME: Optional[str] = "portfolio-files"
     SUPABASE_BASE_PREFIX: Optional[str] = "Graficos"
     SUPABASE_BASE_PREFIX_2: Optional[str] = None
+    SUPABASE_PORTFOLIO_DATA_PREFIX: Optional[str] = "Informes"
+    SUPABASE_PORTFOLIO_CHARTS_PREFIX: Optional[str] = None
+    SUPABASE_PORTFOLIO_ASSETS_PREFIX: Optional[str] = None
     ENABLE_SUPABASE_UPLOAD: bool = True
     SUPABASE_CLEANUP_AFTER_TESTS: bool = False
 
     # PDF Generation Service
     PDF_SERVICE_URL: Optional[str] = None
     INTERNAL_API_KEY: Optional[str] = None
+
+    # Portfolio Manager Service
+    PORTFOLIO_MANAGER_ENABLED: bool = True
+    PORTFOLIO_MANAGER_REFRESH_MINUTES: int = 15
+    PORTFOLIO_MANAGER_DEFAULT_PERIOD: str = "6mo"
+    PORTFOLIO_DATA_PATH: str = "../Portfolio manager/data/portfolio_data.json"
+    PORTFOLIO_MANAGER_SERVICE_URL: str = "http://localhost:9000"
+    PORTFOLIO_MANAGER_TIMEOUT: int = 30
+    PORTFOLIO_MANAGER_DEFAULT_USER_ID: str = "default"
+    PORTFOLIO_MANAGER_SIMULATE_MARKET_OPEN: bool = False
+    PORTFOLIO_MANAGER_FORCE_UPDATES: bool = False
+    PORTFOLIO_MANAGER_TEST_REFRESH_SECONDS: Optional[int] = None
 
     class Config:
         env_file = ".env"

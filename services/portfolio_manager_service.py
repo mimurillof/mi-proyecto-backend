@@ -130,12 +130,15 @@ class PortfolioManagerClient:
                 days_ahead = 2
             elif current.weekday() == 6:  # Domingo
                 days_ahead = 1
-            else:  # Día laboral
+            else:  # Día laboral (lunes-viernes)
                 open_time = current.replace(hour=9, minute=30, second=0, microsecond=0)
                 if current < open_time:
                     return open_time
-                # Si ya pasó el cierre, ir al siguiente día
+                # Si ya pasó el cierre, ir al siguiente día laborable
                 days_ahead = 1
+                # Si es viernes, saltar al lunes (3 días)
+                if current.weekday() == 4:  # Viernes
+                    days_ahead = 3
             
             next_day = current + timedelta(days=days_ahead)
             return next_day.replace(hour=9, minute=30, second=0, microsecond=0)

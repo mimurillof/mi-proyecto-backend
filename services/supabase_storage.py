@@ -157,6 +157,29 @@ class SupabaseStorageService:
             "message": "El informe ha sido actualizado correctamente en Supabase.",
             "path": storage_path,
         }
+
+    def read_report_json(self, filename: str = REPORT_FILENAME) -> Dict[str, Any]:
+        """Lee un archivo JSON de informes desde Supabase Storage."""
+        file_path = self.get_report_file_path(filename)
+
+        try:
+            response = self.client.storage.from_(self.bucket_name).download(file_path)
+        except Exception as exc:  # pragma: no cover - errores de red externos
+            logger.exception("Error al descargar informe %s desde Supabase", file_path)
+            raise Exception(f"No se pudo descargar el archivo {file_path}: {exc}") from exc
+
+        if not response:
+            logger.error("Supabase devolvió respuesta vacía al descargar %s", file_path)
+            raise Exception(f"Archivo {file_path} vacío o inexistente en Supabase")
+
+        try:
+            data = json.loads(response.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            logger.exception("Error al decodificar JSON del archivo %s", file_path)
+            raise Exception(f"No se pudo decodificar el JSON del archivo {file_path}: {exc}") from exc
+
+        logger.info("Archivo %s leído desde Supabase Storage", file_path)
+        return data
     
     async def read_metrics_json(self, filename: str = "api_response_B.json") -> Dict[str, Any]:
         """

@@ -1,0 +1,109 @@
+{
+  "generated_at": "2025-10-13T21:18:17.600588+00:00",
+  "market_sentiment": {
+    "value": 33,
+    "description": "Fear"
+  },
+  "portfolio_news": [
+    {
+      "uuid": "9a988f04-bc34-3abe-a926-defc1e37c850",
+      "title": "Equities Rebound After Friday's Rout as US Eases China Rhetoric",
+      "subtitle": "US equities rebounded from Friday's selloff amid signs that Washington won't discontinue trade talks",
+      "summary": "US equities rebounded from Friday's selloff amid signs that Washington won't discontinue trade talks",
+      "source": null,
+      "url": "https://finance.yahoo.com/news/equities-rebound-friday-apos-rout-210647576.html",
+      "published_at": "2025-10-13T21:06:47+00:00",
+      "image": "https://s.yimg.com/uu/api/res/1.2/eYNqcCgn3G_qEuDD8GI7aw--~B/aD03NTA7dz0xMDAwO2FwcGlkPXl0YWNoeW9u/https://media.zenfs.com/en/mt_newswires_premium_news_706/2475a8618428bf41d7b045240805a142",
+      "type": "STORY"
+    },
+    {
+      "uuid": "8d694032-941d-3473-b213-d2a4be776f4c",
+      "title": "Jefferies Flags Margin Risk For Apple iPhone 17",
+      "subtitle": "Tariffs and base mix pressure Apple profit outlook",
+      "summary": "Tariffs and base mix pressure Apple profit outlook",
+      "source": null,
+      "url": "https://finance.yahoo.com/news/jefferies-flags-margin-risk-apple-210642153.html",
+      "published_at": "2025-10-13T21:06:42+00:00",
+      "image": "https://s.yimg.com/uu/api/res/1.2/IcEDHtzDwTA4hQbvBfYYrg--~B/aD00MDA7dz00MDA7YXBwaWQ9eXRhY2h5b24-/https://media.zenfs.com/en/us.finance.gurufocus/40a12a1b7769c635ead36fab47a12566",
+      "type": "STORY"
+    },
+    {
+      "uuid": "85bb7474-575f-3c6f-97fa-27a319f08356",
+      "title": "Microsoft shutting down 35-year-old app with millions of users",
+      "subtitle": "Microsoft is dropping support for one of its oldest programs.Users will not be able to access content created in the program after Oct. 1, 2026.Users should migrate their files to other platforms now. When a company stops supporting a piece of software, it can be jarring for users. Many have to ...",
+      "summary": "Microsoft is dropping support for one of its oldest programs.Users will not be able to access content created in the program after Oct. 1, 2026.Users should migrate their files to other platforms now. When a company stops supporting a piece of software, it can be jarring for users. Many have to ...",
+      "source": null,
+      "url": "https://finance.yahoo.com/news/microsoft-shutting-down-35-old-210300839.html",
+      "published_at": "2025-10-13T21:03:00+00:00",
+      "image": "https://s.yimg.com/uu/api/res/1.2/F9ggkGmzPCeEzBNu3sUXVw--~B/aD02NzU7dz0xMjAwO2FwcGlkPXl0YWNoeW9u/https://media.zenfs.com/en/thestreet_881/c54cc9bf4c2f510c171ed49ac337acbd",
+      "type": "STORY"
+    }
+  ],
+  "reddit_mentions": [
+    {
+      "id": "1o3dbm7",
+      "subreddit": "wallstreetbets",
+      "title": "Enjoy the weekend",
+      "score": 39184,
+      "url": "https://i.redd.it/4xiwo8lapcuf1.jpeg",
+      "created_utc": "2025-10-10T21:17:32+00:00",
+      "source": "portfolio_mention_fallback"
+    },
+    {
+      "id": "1o0jvlo",
+      "subreddit": "wallstreetbets",
+      "title": "Someone just sold $6,560,000 worth of $AAPL 260 puts",
+      "score": 3872,
+      "url": "https://i.redd.it/yfmg7nsxwptf1.jpeg",
+      "created_utc": "2025-10-07T16:39:25+00:00",
+      "source": "portfolio_mention_fallback"
+    },
+    {
+      "id": "1ny7ylt",
+      "subreddit": "stocks",
+      "title": "Ford CEO says buyers won’t pay $75k for EVs, targets $30k models to rival BYD and move out of Tesla’s shadow",
+      "score": 2509,
+      "url": "https://www.reddit.com/r/stocks/comments/1ny7ylt/ford_ceo_says_buyers_wont_pay_75k_for_evs_targets/",
+      "created_utc": "2025-10-04T22:48:04+00:00",
+      "source": "portfolio_mention_fallback"
+    }
+  ],
+  "tradingview_ideas": [
+    {
+      "id": "u9735mu9",
+      "ticker": "SPX",
+      "category": "market",
+      "title": "S&P 500: ¿\"TACO Trump\" o algo más serio?",
+      "author": "por Capitalcom",
+      "rating": null,
+      "published_at": "2025-10-13T17:58:30+00:00",
+      "idea_url": "https://es.tradingview.com/chart/US500/u9735mu9/",
+      "image_url": "https://s3.tradingview.com/u/u9735mu9_mid.png",
+      "source_url": "https://es.tradingview.com/symbols/SPX/ideas/?sort=recent"
+    },
+    {
+      "id": "5o7jdz3C",
+      "ticker": "SPX",
+      "category": "market",
+      "title": "Pistas Técnicas 13/10/25",
+      "author": "por Marketplumbing",
+      "rating": null,
+      "published_at": "2025-10-13T16:05:37+00:00",
+      "idea_url": "https://es.tradingview.com/chart/SPX/5o7jdz3C/",
+      "image_url": "https://s3.tradingview.com/5/5o7jdz3C_mid.png",
+      "source_url": "https://es.tradingview.com/symbols/SPX/ideas/?sort=recent"
+    },
+    {
+      "id": "5UIPie7F",
+      "ticker": "SPX",
+      "category": "market",
+      "title": "Plan de trading: S&P 500 en punto crítico.",
+      "author": "por JEdu1982",
+      "rating": null,
+      "published_at": "2025-10-13T10:55:26+00:00",
+      "idea_url": "https://es.tradingview.com/chart/SPX500USD/5UIPie7F/",
+      "image_url": "https://s3.tradingview.com/5/5UIPie7F_mid.png",
+      "source_url": "https://es.tradingview.com/symbols/SPX/ideas/?sort=recent"
+    }
+  ]
+}

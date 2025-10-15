@@ -9,6 +9,7 @@ from api.ribbon_router import router as ribbon_router
 from api.analizer_router import router as analizer_router
 from api.portfolio_router import router as portfolio_router
 from api.portfolio_manager_router import router as portfolio_manager_router
+from api.home_router import router as home_router
 from config import settings
 from services.portfolio_manager_service import (
     shutdown_portfolio_manager,
@@ -90,6 +91,10 @@ app.include_router(
     portfolio_router, 
     tags=["Portfolio"], 
     prefix=""  # Ya incluye el prefijo /api/portfolio en el router
+)
+
+app.include_router(
+    home_router,
 )
 
 app.include_router(

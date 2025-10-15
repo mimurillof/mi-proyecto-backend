@@ -68,12 +68,6 @@ def determine_sentiment_bucket(value: Optional[int]) -> Tuple[str, str]:
     return "extreme-greed", "Extreme Greed"
 
 
-def format_score(score: Optional[int]) -> str:
-    if score is None:
-        return "0"
-    return f"{score:,}".replace(",", "·")
-
-
 def extract_source_name(source: Optional[str], url: Optional[str]) -> Optional[str]:
     if source:
         return source
@@ -137,45 +131,7 @@ def build_news_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return news_entries
 
 
-def build_reddit_cards(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    now = datetime.now(timezone.utc)
-    sorted_items = sorted(
-        items,
-        key=lambda entry: (
-            entry.get("score", 0),
-            parse_datetime(entry.get("created_utc")) or datetime.min.replace(tzinfo=timezone.utc),
-        ),
-        reverse=True,
-    )
-
-    cards: List[Dict[str, Any]] = []
-
-    for entry in sorted_items[:3]:
-        created_at = parse_datetime(entry.get("created_utc"))
-        cards.append(
-            {
-                "id": entry.get("id"),
-                "type": "reddit",
-                "layout": "small",
-                "badge": f"Reddit • r/{entry.get('subreddit', 'unknown')}",
-                "title": entry.get("title") or "Post destacado",
-                "description": "Actividad de la comunidad",
-                "body": f"Impacto: {format_score(entry.get('score'))} votos.",
-                "image_url": entry.get("url") or DEFAULT_SMALL_CARD_FALLBACK,
-                "url": entry.get("url"),
-                "primary_stat_label": "Upvotes",
-                "primary_stat_value": format_score(entry.get("score")),
-                "secondary_stat_label": "Publicado",
-                "secondary_stat_value": format_relative_time(created_at, now=now),
-                "published_at": entry.get("created_utc"),
-                "score": entry.get("score"),
-            }
-        )
-
-    return cards
-
-
-def build_tradingview_cards(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def build_tradingview_cards(items: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     now = datetime.now(timezone.utc)
     sorted_items = sorted(
         items,
@@ -183,31 +139,50 @@ def build_tradingview_cards(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]
         reverse=True,
     )
 
-    cards: List[Dict[str, Any]] = []
+    large_cards: List[Dict[str, Any]] = []
+    small_cards: List[Dict[str, Any]] = []
 
-    for entry in sorted_items[:2]:
+    for index, entry in enumerate(sorted_items):
         published_at = parse_datetime(entry.get("published_at"))
-        cards.append(
-            {
-                "id": entry.get("id"),
-                "type": "tradingview",
-                "layout": "large",
-                "badge": f"TradingView • {entry.get('ticker', 'Mercado')}",
-                "title": entry.get("title") or "Idea destacada",
-                "description": entry.get("author"),
-                "body": entry.get("category"),
-                "image_url": entry.get("image_url") or DEFAULT_LARGE_CARD_FALLBACK,
-                "url": entry.get("idea_url") or entry.get("source_url"),
-                "primary_stat_label": "Publicado",
-                "primary_stat_value": format_relative_time(published_at, now=now),
-                "secondary_stat_label": "Ticker",
-                "secondary_stat_value": entry.get("ticker"),
-                "published_at": entry.get("published_at"),
-                "cta_label": "Ver idea",
-            }
-        )
+        base_card = {
+            "id": entry.get("id"),
+            "type": "tradingview",
+            "badge": f"TradingView • {entry.get('ticker', 'Mercado')}",
+            "title": entry.get("title") or "Idea destacada",
+            "description": entry.get("author"),
+            "image_url": entry.get("image_url"),
+            "url": entry.get("idea_url") or entry.get("source_url"),
+            "published_at": entry.get("published_at"),
+            "cta_label": "Ver idea" if entry.get("idea_url") or entry.get("source_url") else None,
+        }
 
-    return cards
+        if index < 2:
+            large_cards.append(
+                {
+                    **base_card,
+                    "layout": "large",
+                    "body": entry.get("category") or entry.get("rating"),
+                    "image_url": base_card["image_url"] or DEFAULT_LARGE_CARD_FALLBACK,
+                    "primary_stat_label": "Publicado",
+                    "primary_stat_value": format_relative_time(published_at, now=now),
+                    "secondary_stat_label": "Ticker",
+                    "secondary_stat_value": entry.get("ticker") or "Mercado global",
+                }
+            )
+        else:
+            small_cards.append(
+                {
+                    **base_card,
+                    "layout": "small",
+                    "image_url": base_card["image_url"] or DEFAULT_SMALL_CARD_FALLBACK,
+                    "primary_stat_label": "Ticker",
+                    "primary_stat_value": entry.get("ticker") or "Mercado global",
+                    "secondary_stat_label": "Categoría",
+                    "secondary_stat_value": entry.get("category") or entry.get("rating") or "Idea destacada",
+                }
+            )
+
+    return large_cards, small_cards
 
 
 def get_home_dashboard_data() -> Dict[str, Any]:
@@ -230,9 +205,13 @@ def get_home_dashboard_data() -> Dict[str, Any]:
         },
         "portfolio_news": build_news_items(payload.get("portfolio_news", [])),
         "highlights": {
-            "small_cards": build_reddit_cards(payload.get("reddit_mentions", [])),
-            "large_cards": build_tradingview_cards(payload.get("tradingview_ideas", [])),
+            "large_cards": [],
+            "small_cards": [],
         },
     }
+
+    tradingview_large, tradingview_small = build_tradingview_cards(payload.get("tradingview_ideas", []))
+    response["highlights"]["large_cards"] = tradingview_large
+    response["highlights"]["small_cards"] = tradingview_small
 
     return response

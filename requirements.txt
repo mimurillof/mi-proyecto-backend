@@ -40,3 +40,5 @@ PyPortfolioOpt>=1.5.5
 
 # Supabase integration
 supabase>=2.8.0
+
+psycopg2-binary

@@ -12,14 +12,14 @@ class Settings(BaseSettings):
     
     # CORS Settings
     CLIENT_ORIGIN: str = "http://localhost:5173"
-    CORS_ORIGINS: list = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        # Producción - Chat Agent Service
-        "https://chat-agent-horizon-cc5e16d4b37e.herokuapp.com"
-    ]
+    # CORS_ORIGINS puede ser una lista o string separado por comas desde .env
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,https://chat-agent-horizon-cc5e16d4b37e.herokuapp.com,https://mi-proyecto-topaz-omega.vercel.app"
+    
+    def get_cors_origins(self) -> list:
+        """Obtener lista de orígenes CORS"""
+        if isinstance(self.CORS_ORIGINS, str):
+            return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+        return self.CORS_ORIGINS
     
     # Application Settings
     API_V1_STR: str = "/api"

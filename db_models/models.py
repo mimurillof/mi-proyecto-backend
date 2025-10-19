@@ -25,10 +25,11 @@ class User(Base):
     user_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
-    first_name = Column(String)
-    last_name = Column(String)
-    birth_date = Column(Date)
-    gender = Column(Enum(GenderEnum, name='gender_enum'))
+    # first_name y last_name son requeridos en Supabase
+    first_name = Column(String, nullable=False, default="")
+    last_name = Column(String, nullable=False, default="")
+    birth_date = Column(Date, nullable=True)
+    gender = Column(Enum(GenderEnum, name='gender_enum'), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     has_completed_onboarding = Column(Boolean, default=False)
  

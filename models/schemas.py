@@ -9,9 +9,13 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
+    first_name: str = Field(..., min_length=1)
+    last_name: str = Field(..., min_length=1)
 
 class UserResponse(UserBase):
     user_id: uuid.UUID
+    first_name: str
+    last_name: str
     created_at: datetime
     
     class Config:

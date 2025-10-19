@@ -32,7 +32,7 @@ async def register_user(
     return APIResponse(
         success=True,
         message="User registered successfully",
-        data={"user_id": new_user.id, "email": new_user.email}
+        data={"user_id": str(new_user.user_id), "email": new_user.email}
     )
 
 @router.post("/login", response_model=Token)
@@ -51,7 +51,7 @@ async def login_user(
     
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
+        data={"sub": str(user.user_id), "email": user.email}, expires_delta=access_token_expires
     )
     
     return Token(access_token=access_token, token_type="bearer")

@@ -1,10 +1,10 @@
-"""
+﻿"""
 Endpoints de backend para integrar el script existente `analizer_script.py` (sin modificarlo).
 
 - Permite ejecutar el script bajo demanda
 - Expone el JSON/MD generados y lista/serve archivos HTML/PNG/JSON/MD
 
-Nota: No se hacen cambios en el script; solo se orquesta su ejecución y el servido de outputs.
+Nota: No se hacen cambios en el script; solo se orquesta su ejecuciÃ³n y el servido de outputs.
 """
 
 from __future__ import annotations
@@ -53,10 +53,10 @@ def _ensure_environment() -> None:
 
 
 def _safe_path_in_analyzer_dir(filename: str) -> Path:
-    """Previene path traversal asegurando que el archivo esté dentro del directorio del analizador."""
+    """Previene path traversal asegurando que el archivo estÃ© dentro del directorio del analizador."""
     candidate = (ANALYZER_DIR / filename).resolve()
     if not str(candidate).startswith(str(ANALYZER_DIR.resolve())):
-        raise HTTPException(status_code=400, detail="Ruta inválida")
+        raise HTTPException(status_code=400, detail="Ruta invÃ¡lida")
     return candidate
 
 
@@ -107,13 +107,13 @@ async def health() -> Dict[str, Any]:
 
 @router.post("/run")
 async def run_script(timeout_seconds: int = 600) -> Dict[str, Any]:
-    """Ejecuta el script de análisis de forma síncrona y retorna el estado y resumen de outputs.
+    """Ejecuta el script de anÃ¡lisis de forma sÃ­ncrona y retorna el estado y resumen de outputs.
 
-    timeout_seconds: límite de tiempo para la ejecución (por defecto 10 minutos).
+    timeout_seconds: lÃ­mite de tiempo para la ejecuciÃ³n (por defecto 10 minutos).
     """
     _ensure_environment()
 
-    # Preparar entorno para ejecución headless (matplotlib) y utf-8
+    # Preparar entorno para ejecuciÃ³n headless (matplotlib) y utf-8
     env = os.environ.copy()
     env.setdefault("MPLBACKEND", "Agg")
     env.setdefault("PYTHONIOENCODING", "UTF-8")
@@ -121,7 +121,7 @@ async def run_script(timeout_seconds: int = 600) -> Dict[str, Any]:
 
     start = time.time()
 
-    # Elegir intérprete de Python para ejecutar el script
+    # Elegir intÃ©rprete de Python para ejecutar el script
     # 1) Preferir el venv local si existe
     venv_python_win = BACKEND_ROOT / "venv" / "Scripts" / "python.exe"
     venv_python_posix = BACKEND_ROOT / "venv" / "bin" / "python"
@@ -130,7 +130,7 @@ async def run_script(timeout_seconds: int = 600) -> Dict[str, Any]:
     elif venv_python_posix.exists():
         python_exec = str(venv_python_posix)
     else:
-        # 2) Usar el mismo intérprete de Python que ejecuta FastAPI
+        # 2) Usar el mismo intÃ©rprete de Python que ejecuta FastAPI
         python_exec = sys.executable
     cmd = [python_exec, str(SCRIPT_PATH)]
 
@@ -147,7 +147,7 @@ async def run_script(timeout_seconds: int = 600) -> Dict[str, Any]:
             timeout=timeout_seconds,
         )
     except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Tiempo de ejecución excedido")
+        raise HTTPException(status_code=504, detail="Tiempo de ejecuciÃ³n excedido")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fallo al ejecutar script: {e}")
 
@@ -167,7 +167,7 @@ async def run_script(timeout_seconds: int = 600) -> Dict[str, Any]:
         "files": files,
     }
 
-    # Adjuntar paths canónicos a resultados clave si existen
+    # Adjuntar paths canÃ³nicos a resultados clave si existen
     results_json = ANALYZER_DIR / RESULTS_JSON_NAME
     report_md = ANALYZER_DIR / REPORT_MD_NAME
     if results_json.exists():
@@ -202,14 +202,14 @@ async def get_results() -> Dict[str, Any]:
         }
 
     if not results["json"] and not results["report_md"]:
-        raise HTTPException(status_code=404, detail="No hay resultados disponibles aún")
+        raise HTTPException(status_code=404, detail="No hay resultados disponibles aÃºn")
 
     return results
 
 
 @router.get("/list-files")
 async def list_files() -> Dict[str, List[str]]:
-    # Si la carpeta no existe, devolvemos listas vacías en vez de fallar
+    # Si la carpeta no existe, devolvemos listas vacÃ­as en vez de fallar
     if not ANALYZER_DIR.exists():
         return {"html": [], "png": [], "json": [], "md": []}
     return _list_files_by_ext()
@@ -221,10 +221,10 @@ async def get_file(
     current_user: User = Depends(get_current_user_from_query),
 ):
     """
-    Sirve un archivo HTML desde Supabase Storage específico del usuario autenticado.
-    Requiere token de autenticación en query parameter (?token=xxx) para acceder a los gráficos del portafolio del usuario.
+    Sirve un archivo HTML desde Supabase Storage especÃ­fico del usuario autenticado.
+    Requiere token de autenticaciÃ³n en query parameter (?token=xxx) para acceder a los grÃ¡ficos del portafolio del usuario.
     """
-    user_id = str(current_user.id)
+    user_id = str(current_user.user_id)
     logger.info("Sirviendo archivo %s para user_id=%s", filename, user_id)
     
     allowed_ext = {".html", ".png", ".json", ".md"}
@@ -232,7 +232,7 @@ async def get_file(
     path = _safe_path_in_analyzer_dir(filename)
     
     if path.suffix.lower() not in allowed_ext:
-        raise HTTPException(status_code=400, detail="Extensión no permitida")
+        raise HTTPException(status_code=400, detail="ExtensiÃ³n no permitida")
     
     # Para archivos HTML, intentar servir desde Supabase Storage primero
     if filename.endswith('.html'):
@@ -267,23 +267,24 @@ async def get_file(
                     
                     if response:
                         html_content = response.decode('utf-8')
-                        logger.info("✅ Sirviendo %s desde Supabase Storage para user_id=%s", filename, user_id)
+                        logger.info("âœ… Sirviendo %s desde Supabase Storage para user_id=%s", filename, user_id)
                         return HTMLResponse(content=html_content)
                         
                 except Exception as supabase_error:
-                    logger.warning("⚠️ Error Supabase para %s (user_id=%s): %s", filename, user_id, str(supabase_error))
+                    logger.warning("âš ï¸ Error Supabase para %s (user_id=%s): %s", filename, user_id, str(supabase_error))
                     # Continuar al fallback local
                     
         except Exception as import_error:
-            logger.warning("⚠️ Error importando Supabase para %s: %s", filename, str(import_error))
+            logger.warning("âš ï¸ Error importando Supabase para %s: %s", filename, str(import_error))
             # Continuar al fallback local
     
     # Fallback: servir archivo local (solo si existe; no requerimos que exista la carpeta base)
     if not path.exists():
-        logger.error("❌ Archivo no encontrado (local ni Supabase): %s para user_id=%s", filename, user_id)
+        logger.error("âŒ Archivo no encontrado (local ni Supabase): %s para user_id=%s", filename, user_id)
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     
-    logger.info("📁 Sirviendo %s desde archivos locales (fallback) para user_id=%s", filename, user_id)
+    logger.info("ðŸ“ Sirviendo %s desde archivos locales (fallback) para user_id=%s", filename, user_id)
     return FileResponse(str(path))
+
 
 

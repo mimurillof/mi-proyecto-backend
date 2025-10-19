@@ -1,4 +1,4 @@
-"""Endpoints modernos para exponer el Portfolio Manager dentro del backend."""
+﻿"""Endpoints modernos para exponer el Portfolio Manager dentro del backend."""
 from __future__ import annotations
 
 import logging
@@ -34,11 +34,11 @@ class PortfolioUpdateRequest(BaseModel):
 @router.get("/report")
 async def get_portfolio_report(
     current_user: User = Depends(get_current_user),
-    period: Optional[str] = Query(None, description="Periodo histórico a analizar"),
-    refresh: bool = Query(False, description="Forzar regeneración del reporte"),
+    period: Optional[str] = Query(None, description="Periodo histÃ³rico a analizar"),
+    refresh: bool = Query(False, description="Forzar regeneraciÃ³n del reporte"),
 ):
-    """Devuelve el reporte completo del portafolio del usuario autenticado con caché y refresco opcional."""
-    user_id = str(current_user.id)
+    """Devuelve el reporte completo del portafolio del usuario autenticado con cachÃ© y refresco opcional."""
+    user_id = str(current_user.user_id)
     logger.info("Solicitando reporte de portfolio para user_id=%s, period=%s, refresh=%s", user_id, period, refresh)
     
     client = get_portfolio_manager_client(user_id)
@@ -69,8 +69,8 @@ async def get_portfolio_report(
 async def get_portfolio_summary(
     current_user: User = Depends(get_current_user),
 ):
-    """Resumen rápido del portafolio del usuario autenticado."""
-    user_id = str(current_user.id)
+    """Resumen rÃ¡pido del portafolio del usuario autenticado."""
+    user_id = str(current_user.user_id)
     logger.info("Solicitando resumen de portfolio para user_id=%s", user_id)
     
     client = get_portfolio_manager_client(user_id)
@@ -81,7 +81,7 @@ async def get_portfolio_summary(
     if not summary_data.get("summary"):
         raise HTTPException(status_code=503, detail="No se pudo obtener el resumen del portafolio")
 
-    # Asegurarse de que 'generated_at' esté en la respuesta si es posible
+    # Asegurarse de que 'generated_at' estÃ© en la respuesta si es posible
     if "generated_at" not in summary_data:
         full_report = await client.get_report(force_refresh=False)
         if full_report.get("data", {}).get("generated_at"):
@@ -94,8 +94,8 @@ async def get_portfolio_summary(
 async def get_market_overview(
     current_user: User = Depends(get_current_user),
 ):
-    """Información de mercado basada en la watchlist configurada del usuario autenticado."""
-    user_id = str(current_user.id)
+    """InformaciÃ³n de mercado basada en la watchlist configurada del usuario autenticado."""
+    user_id = str(current_user.user_id)
     logger.info("Solicitando watchlist de mercado para user_id=%s", user_id)
     
     client = get_portfolio_manager_client(user_id)
@@ -104,7 +104,7 @@ async def get_market_overview(
         return JSONResponse(status_code=200, content=market)
 
     if not market:
-        raise HTTPException(status_code=503, detail="No se pudo obtener la información de mercado")
+        raise HTTPException(status_code=503, detail="No se pudo obtener la informaciÃ³n de mercado")
     return market
 
 
@@ -113,27 +113,27 @@ async def get_chart(
     chart_name: str,
     current_user: User = Depends(get_current_user),
 ):
-    """Entrega el HTML del gráfico solicitado del usuario autenticado (portfolio, allocation o símbolo concreto)."""
-    user_id = str(current_user.id)
-    logger.info("Solicitando gráfico '%s' para user_id=%s", chart_name, user_id)
+    """Entrega el HTML del grÃ¡fico solicitado del usuario autenticado (portfolio, allocation o sÃ­mbolo concreto)."""
+    user_id = str(current_user.user_id)
+    logger.info("Solicitando grÃ¡fico '%s' para user_id=%s", chart_name, user_id)
     
     client = get_portfolio_manager_client(user_id)
     html = await client.get_chart(chart_name)
     if not html:
-        raise HTTPException(status_code=404, detail=f"No se encontró el gráfico '{chart_name}'")
+        raise HTTPException(status_code=404, detail=f"No se encontrÃ³ el grÃ¡fico '{chart_name}'")
     return HTMLResponse(content=html)
 
 
 @router.get("/watch")
 async def poll_portfolio_updates(
     current_user: User = Depends(get_current_user),
-    since: Optional[str] = Query(None, description="Marca de tiempo (ISO 8601) del último JSON recibido"),
+    since: Optional[str] = Query(None, description="Marca de tiempo (ISO 8601) del Ãºltimo JSON recibido"),
     include_report: bool = Query(False, description="Incluir el reporte completo en la respuesta"),
     include_summary: bool = Query(True, description="Incluir el resumen del portafolio"),
-    include_market: bool = Query(True, description="Incluir la sección de mercado"),
+    include_market: bool = Query(True, description="Incluir la secciÃ³n de mercado"),
 ):
-    """Permite al frontend consultar periódicamente si existe un JSON más reciente del usuario sin forzar regeneraciones."""
-    user_id = str(current_user.id)
+    """Permite al frontend consultar periÃ³dicamente si existe un JSON mÃ¡s reciente del usuario sin forzar regeneraciones."""
+    user_id = str(current_user.user_id)
     
     client = get_portfolio_manager_client(user_id)
     payload = await client.poll_portfolio(
@@ -151,7 +151,7 @@ async def add_asset(
     current_user: User = Depends(get_current_user),
 ):
     """Agrega un nuevo activo al portafolio del usuario autenticado y regenera el reporte."""
-    user_id = str(current_user.id)
+    user_id = str(current_user.user_id)
     logger.info("Agregando activo '%s' para user_id=%s", asset.symbol, user_id)
     
     client = get_portfolio_manager_client(user_id)
@@ -166,8 +166,8 @@ async def update_portfolio(
     request: PortfolioUpdateRequest,
     current_user: User = Depends(get_current_user),
 ):
-    """Sobrescribe la composición completa del portafolio del usuario autenticado."""
-    user_id = str(current_user.id)
+    """Sobrescribe la composiciÃ³n completa del portafolio del usuario autenticado."""
+    user_id = str(current_user.user_id)
     logger.info("Actualizando portfolio completo para user_id=%s", user_id)
     
     client = get_portfolio_manager_client(user_id)
@@ -176,3 +176,4 @@ async def update_portfolio(
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("message", "No se pudo actualizar el portafolio"))
     return result
+

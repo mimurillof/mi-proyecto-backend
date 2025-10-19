@@ -6,6 +6,7 @@ from crud.user_service import user_crud
 from auth.security import verify_token, create_credentials_exception
 from db_models.models import User
 from typing import Optional
+import uuid
 
 # OAuth2 scheme
 security = HTTPBearer()
@@ -16,12 +17,17 @@ async def get_current_user(
 ) -> User:
     """Get current authenticated user"""
     token = credentials.credentials
-    email = verify_token(token)
+    token_data = verify_token(token)
     
-    if email is None:
+    if not token_data or not token_data.get("user_id"):
         raise create_credentials_exception()
     
-    user = await user_crud.get_user_by_email(db, email=email)
+    try:
+        user_id = uuid.UUID(token_data["user_id"])
+        user = await user_crud.get_user_by_id(db, user_id=user_id)
+    except (ValueError, AttributeError):
+        raise create_credentials_exception()
+    
     if user is None:
         raise create_credentials_exception()
     
@@ -39,12 +45,17 @@ async def get_current_user_from_query(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    email = verify_token(token)
+    token_data = verify_token(token)
     
-    if email is None:
+    if not token_data or not token_data.get("user_id"):
         raise create_credentials_exception()
     
-    user = await user_crud.get_user_by_email(db, email=email)
+    try:
+        user_id = uuid.UUID(token_data["user_id"])
+        user = await user_crud.get_user_by_id(db, user_id=user_id)
+    except (ValueError, AttributeError):
+        raise create_credentials_exception()
+    
     if user is None:
         raise create_credentials_exception()
     

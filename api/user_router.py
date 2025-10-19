@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+﻿from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -21,7 +21,7 @@ async def get_user_profile(
 ):
     """Get user profile by user ID"""
     # Check if user is accessing their own profile or has admin rights
-    if current_user.id != user_id:
+    if current_user.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this profile"
@@ -45,7 +45,7 @@ async def update_user_profile(
 ):
     """Update user profile"""
     # Check if user is updating their own profile
-    if current_user.id != user_id:
+    if current_user.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this profile"
@@ -67,7 +67,7 @@ async def get_notification_settings(
     db: AsyncSession = Depends(get_db)
 ):
     """Get user notification settings"""
-    if current_user.id != user_id:
+    if current_user.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access these settings"
@@ -90,7 +90,7 @@ async def update_notification_settings(
     db: AsyncSession = Depends(get_db)
 ):
     """Update user notification settings"""
-    if current_user.id != user_id:
+    if current_user.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update these settings"
@@ -112,7 +112,7 @@ async def get_user_verifications(
     db: AsyncSession = Depends(get_db)
 ):
     """Get user verification status"""
-    if current_user.id != user_id:
+    if current_user.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access verification data"
@@ -135,7 +135,7 @@ async def get_complete_user(
     db: AsyncSession = Depends(get_db)
 ):
     """Get complete user data with all relationships"""
-    if current_user.id != user_id:
+    if current_user.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this user data"

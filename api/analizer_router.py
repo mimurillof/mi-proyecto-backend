@@ -17,13 +17,19 @@ import glob
 import shlex
 import asyncio
 import subprocess
+import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from auth.dependencies import get_current_user_from_query
+from db_models.models import User
+from config import settings
+from services.supabase_storage import get_supabase_storage
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analizer", tags=["Portfolio Analizer v2"])
 
 
@@ -210,11 +216,17 @@ async def list_files() -> Dict[str, List[str]]:
 
 
 @router.get("/file/{filename}")
-async def get_file(filename: str):
+async def get_file(
+    filename: str,
+    current_user: User = Depends(get_current_user_from_query),
+):
     """
-    Sirve un archivo HTML desde Supabase Storage con fallback a archivos locales.
-    Prioriza Supabase Storage para gráficos HTML.
+    Sirve un archivo HTML desde Supabase Storage específico del usuario autenticado.
+    Requiere token de autenticación en query parameter (?token=xxx) para acceder a los gráficos del portafolio del usuario.
     """
+    user_id = str(current_user.id)
+    logger.info("Sirviendo archivo %s para user_id=%s", filename, user_id)
+    
     allowed_ext = {".html", ".png", ".json", ".md"}
     # Construir path local de manera segura, aunque la carpeta no exista
     path = _safe_path_in_analyzer_dir(filename)
@@ -225,11 +237,6 @@ async def get_file(filename: str):
     # Para archivos HTML, intentar servir desde Supabase Storage primero
     if filename.endswith('.html'):
         try:
-            # Importar servicio de Supabase Storage
-            from services.supabase_storage import get_supabase_storage
-            from config import settings
-            from fastapi.responses import HTMLResponse
-            
             supabase_storage = get_supabase_storage(settings)
             if supabase_storage:
                 # Mapear nombres de archivo a los de Supabase Storage
@@ -250,30 +257,33 @@ async def get_file(filename: str):
                 supabase_filename = supabase_filename_mapping.get(filename, filename)
                 
                 try:
-                    # Construir la ruta completa en Supabase
-                    file_path = f"Graficos/{supabase_filename}"
+                    # Construir la ruta completa en Supabase usando user_id
+                    file_path = f"{user_id}/{supabase_filename}"
+                    
+                    logger.info("Descargando desde Supabase: %s", file_path)
                     
                     # Descargar el archivo HTML desde Supabase Storage
                     response = supabase_storage.client.storage.from_(supabase_storage.bucket_name).download(file_path)
                     
                     if response:
                         html_content = response.decode('utf-8')
-                        print(f"✅ Sirviendo {filename} desde Supabase Storage ({supabase_filename})")
+                        logger.info("✅ Sirviendo %s desde Supabase Storage para user_id=%s", filename, user_id)
                         return HTMLResponse(content=html_content)
                         
                 except Exception as supabase_error:
-                    print(f"⚠️ Error Supabase para {filename}: {str(supabase_error)}")
+                    logger.warning("⚠️ Error Supabase para %s (user_id=%s): %s", filename, user_id, str(supabase_error))
                     # Continuar al fallback local
                     
         except Exception as import_error:
-            print(f"⚠️ Error importando Supabase para {filename}: {str(import_error)}")
+            logger.warning("⚠️ Error importando Supabase para %s: %s", filename, str(import_error))
             # Continuar al fallback local
     
     # Fallback: servir archivo local (solo si existe; no requerimos que exista la carpeta base)
     if not path.exists():
+        logger.error("❌ Archivo no encontrado (local ni Supabase): %s para user_id=%s", filename, user_id)
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     
-    print(f"📁 Sirviendo {filename} desde archivos locales (fallback)")
+    logger.info("📁 Sirviendo %s desde archivos locales (fallback) para user_id=%s", filename, user_id)
     return FileResponse(str(path))
 
 

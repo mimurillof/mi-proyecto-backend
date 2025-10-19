@@ -77,18 +77,26 @@ def extract_source_name(source: Optional[str], url: Optional[str]) -> Optional[s
     return hostname or None
 
 
-def load_portfolio_news_payload() -> Dict[str, Any]:
+def load_portfolio_news_payload(user_id: str) -> Dict[str, Any]:
+    """Carga el payload de noticias del portafolio para un usuario específico.
+    
+    Args:
+        user_id: ID del usuario propietario de los datos
+        
+    Returns:
+        Dict con los datos de noticias del portafolio
+    """
     service = get_supabase_storage(settings)
     last_error: Optional[Exception] = None
 
     if service:
         try:
-            data = service.read_report_json(PORTFOLIO_NEWS_FILENAME)
+            data = service.read_report_json(user_id, PORTFOLIO_NEWS_FILENAME)
             data["_source"] = "supabase"
             return data
         except Exception as exc:  # pragma: no cover - dependencia externa
             last_error = exc
-            logger.warning("Fallo al leer %s desde Supabase: %s", PORTFOLIO_NEWS_FILENAME, exc)
+            logger.warning("Fallo al leer %s desde Supabase para usuario %s: %s", PORTFOLIO_NEWS_FILENAME, user_id, exc)
 
     if LOCAL_JSON_PATH.exists():
         try:
@@ -185,8 +193,16 @@ def build_tradingview_cards(items: List[Dict[str, Any]]) -> Tuple[List[Dict[str,
     return large_cards, small_cards
 
 
-def get_home_dashboard_data() -> Dict[str, Any]:
-    payload = load_portfolio_news_payload()
+def get_home_dashboard_data(user_id: str) -> Dict[str, Any]:
+    """Obtiene los datos del dashboard de inicio para un usuario específico.
+    
+    Args:
+        user_id: ID del usuario propietario de los datos
+        
+    Returns:
+        Dict con los datos del dashboard
+    """
+    payload = load_portfolio_news_payload(user_id)
 
     generated_at = parse_datetime(payload.get("generated_at"))
     now_iso = (generated_at or datetime.now(timezone.utc)).isoformat()

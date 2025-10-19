@@ -41,18 +41,11 @@ class SupabaseStorageService:
             self.supabase_url = config.SUPABASE_URL
             self.supabase_service_role = config.SUPABASE_SERVICE_ROLE
             self.bucket_name = config.SUPABASE_BUCKET_NAME or "portfolio-files"
-            self.base_prefix = config.SUPABASE_BASE_PREFIX or "Graficos"
-            self.base_prefix_reports = self._normalize_prefix(getattr(config, "SUPABASE_BASE_PREFIX_2", None))
         else:
             # Fallback a variables de entorno
             self.supabase_url = os.getenv("SUPABASE_URL")
             self.supabase_service_role = os.getenv("SUPABASE_SERVICE_ROLE")
             self.bucket_name = os.getenv("SUPABASE_BUCKET_NAME", "portfolio-files")
-            self.base_prefix = os.getenv("SUPABASE_BASE_PREFIX", "Graficos")
-            self.base_prefix_reports = self._normalize_prefix(os.getenv("SUPABASE_BASE_PREFIX_2"))
-
-        if not self.base_prefix_reports:
-            self.base_prefix_reports = self._normalize_prefix(self.base_prefix)
         
         if not self.supabase_url or not self.supabase_service_role:
             raise ValueError("SUPABASE_URL y SUPABASE_SERVICE_ROLE deben estar configurados en el .env o config")
@@ -63,7 +56,7 @@ class SupabaseStorageService:
         # Crear cliente de Supabase con service role key
         self.client: Client = create_client(self.supabase_url, self.supabase_service_role)  # type: ignore[arg-type]
         
-        logger.info(f"SupabaseStorageService inicializado - Bucket: {self.bucket_name}, Prefix: {self.base_prefix}")
+        logger.info(f"SupabaseStorageService inicializado - Bucket: {self.bucket_name}")
     
     @staticmethod
     def _normalize_prefix(prefix: Optional[str]) -> str:
@@ -71,27 +64,50 @@ class SupabaseStorageService:
             return ""
         return str(prefix).strip().strip("/")
 
-    def get_metrics_file_path(self, filename: str = "api_response_B.json") -> str:
-        """Construye el path completo del archivo en Supabase Storage.
+    def get_user_base_path(self, user_id: str) -> str:
+        """Construye el path base para un usuario específico.
 
         Args:
+            user_id: ID del usuario
+
+        Returns:
+            str: Path base del usuario en el bucket (ej: "user_123")
+        """
+        if not user_id:
+            raise ValueError("user_id es requerido para construir rutas en Supabase")
+        return str(user_id).strip()
+
+    def get_metrics_file_path(self, user_id: str, filename: str = "api_response_B.json") -> str:
+        """Construye el path completo del archivo en Supabase Storage para un usuario.
+
+        Args:
+            user_id: ID del usuario
             filename: Nombre del archivo (por defecto: api_response_B.json)
 
         Returns:
+            str: Path completo en el bucket (ej: "user_123/api_response_B.json")
+        """
+        user_path = self.get_user_base_path(user_id)
+        return f"{user_path}/{filename}"
+
+    def get_report_file_path(self, user_id: str, filename: str = REPORT_FILENAME) -> str:
+        """Obtiene la ruta completa del informe estratégico en Storage para un usuario.
+        
+        Args:
+            user_id: ID del usuario
+            filename: Nombre del archivo de reporte
+            
+        Returns:
             str: Path completo en el bucket
         """
-        return f"{self.base_prefix}/{filename}"
+        user_path = self.get_user_base_path(user_id)
+        return f"{user_path}/{filename}"
 
-    def get_report_file_path(self, filename: str = REPORT_FILENAME) -> str:
-        """Obtiene la ruta completa del informe estratégico en Storage."""
-        if self.base_prefix_reports:
-            return f"{self.base_prefix_reports}/{filename}"
-        return filename
-
-    def save_portfolio_report_json(self, datos_informe: Dict[str, Any]) -> Dict[str, str]:
+    def save_portfolio_report_json(self, user_id: str, datos_informe: Dict[str, Any]) -> Dict[str, str]:
         """Guarda o actualiza el informe JSON del agente en Supabase Storage.
 
         Args:
+            user_id: ID del usuario propietario del informe
             datos_informe: Diccionario con el informe generado por el agente.
 
         Returns:
@@ -113,7 +129,7 @@ class SupabaseStorageService:
                 "message": f"No se pudo serializar el informe a JSON: {exc}",
             }
 
-        storage_path = self.get_report_file_path()
+        storage_path = self.get_report_file_path(user_id)
         base_url = (self.supabase_url or "").rstrip("/")
         if not base_url:
             logger.error("SUPABASE_URL no está configurado correctamente para la carga REST")
@@ -158,9 +174,17 @@ class SupabaseStorageService:
             "path": storage_path,
         }
 
-    def read_report_json(self, filename: str = REPORT_FILENAME) -> Dict[str, Any]:
-        """Lee un archivo JSON de informes desde Supabase Storage."""
-        file_path = self.get_report_file_path(filename)
+    def read_report_json(self, user_id: str, filename: str = REPORT_FILENAME) -> Dict[str, Any]:
+        """Lee un archivo JSON de informes desde Supabase Storage.
+        
+        Args:
+            user_id: ID del usuario propietario del informe
+            filename: Nombre del archivo de reporte
+            
+        Returns:
+            Dict con el contenido del JSON
+        """
+        file_path = self.get_report_file_path(user_id, filename)
 
         try:
             response = self.client.storage.from_(self.bucket_name).download(file_path)
@@ -181,11 +205,12 @@ class SupabaseStorageService:
         logger.info("Archivo %s leído desde Supabase Storage", file_path)
         return data
     
-    async def read_metrics_json(self, filename: str = "api_response_B.json") -> Dict[str, Any]:
+    async def read_metrics_json(self, user_id: str, filename: str = "api_response_B.json") -> Dict[str, Any]:
         """
         Lee un archivo JSON de métricas desde Supabase Storage
         
         Args:
+            user_id: ID del usuario propietario del archivo
             filename: Nombre del archivo JSON a leer
             
         Returns:
@@ -195,7 +220,7 @@ class SupabaseStorageService:
             Exception: Si el archivo no se puede leer o parsear
         """
         try:
-            file_path = self.get_metrics_file_path(filename)
+            file_path = self.get_metrics_file_path(user_id, filename)
             
             # Descargar el archivo desde Supabase Storage
             response = self.client.storage.from_(self.bucket_name).download(file_path)
@@ -214,11 +239,12 @@ class SupabaseStorageService:
             logger.error(f"Error al leer archivo JSON desde Supabase Storage: {str(e)}")
             raise Exception(f"Error al leer métricas desde Supabase: {str(e)}")
     
-    def create_signed_url(self, filename: str = "api_response_B.json", expires_in: int = 3600) -> str:
+    def create_signed_url(self, user_id: str, filename: str = "api_response_B.json", expires_in: int = 3600) -> str:
         """
         Crea una URL firmada para acceso directo a un archivo en Supabase Storage
         
         Args:
+            user_id: ID del usuario propietario del archivo
             filename: Nombre del archivo
             expires_in: Tiempo de expiración en segundos (por defecto: 1 hora)
             
@@ -229,7 +255,7 @@ class SupabaseStorageService:
             Exception: Si no se puede generar la URL firmada
         """
         try:
-            file_path = self.get_metrics_file_path(filename)
+            file_path = self.get_metrics_file_path(user_id, filename)
             
             # Crear URL firmada
             response = self.client.storage.from_(self.bucket_name).create_signed_url(file_path, expires_in)
@@ -247,11 +273,12 @@ class SupabaseStorageService:
             logger.error(f"Error al crear URL firmada: {str(e)}")
             raise Exception(f"Error al crear URL firmada: {str(e)}")
     
-    async def read_html_chart(self, chart_name: str) -> str:
+    async def read_html_chart(self, user_id: str, chart_name: str) -> str:
         """
         Lee un archivo HTML de gráfico desde Supabase Storage
         
         Args:
+            user_id: ID del usuario propietario del gráfico
             chart_name: Nombre del tipo de gráfico (cumulative_returns, etc.)
             
         Returns:
@@ -262,7 +289,7 @@ class SupabaseStorageService:
         """
         try:
             filename = self.get_chart_filename(chart_name)
-            file_path = self.get_metrics_file_path(filename)
+            file_path = self.get_metrics_file_path(user_id, filename)
             
             # Descargar el archivo HTML desde Supabase Storage
             response = self.client.storage.from_(self.bucket_name).download(file_path)
@@ -310,11 +337,12 @@ class SupabaseStorageService:
         
         return filename
     
-    def create_chart_signed_url(self, chart_name: str, expires_in: int = 3600) -> str:
+    def create_chart_signed_url(self, user_id: str, chart_name: str, expires_in: int = 3600) -> str:
         """
         Crea una URL firmada para acceso directo a un gráfico HTML
         
         Args:
+            user_id: ID del usuario propietario del gráfico
             chart_name: Nombre del tipo de gráfico
             expires_in: Tiempo de expiración en segundos
             
@@ -323,20 +351,24 @@ class SupabaseStorageService:
         """
         try:
             filename = self.get_chart_filename(chart_name)
-            return self.create_signed_url(filename, expires_in)
+            return self.create_signed_url(user_id, filename, expires_in)
         except Exception as e:
             logger.error(f"Error al crear URL firmada para gráfico {chart_name}: {str(e)}")
             raise Exception(f"Error al crear URL firmada para gráfico: {str(e)}")
     
-    def list_chart_files(self) -> list:
+    def list_chart_files(self, user_id: str) -> list:
         """
-        Lista todos los archivos HTML de gráficos disponibles en Supabase Storage
+        Lista todos los archivos HTML de gráficos disponibles en Supabase Storage para un usuario
+        
+        Args:
+            user_id: ID del usuario propietario de los gráficos
         
         Returns:
             list: Lista de archivos HTML de gráficos disponibles
         """
         try:
-            response = self.client.storage.from_(self.bucket_name).list(self.base_prefix)
+            user_path = self.get_user_base_path(user_id)
+            response = self.client.storage.from_(self.bucket_name).list(user_path)
             
             # Filtrar solo archivos HTML de gráficos
             chart_files = []
@@ -347,11 +379,11 @@ class SupabaseStorageService:
                         "name": filename,
                         "size": file_data.get("metadata", {}).get("size") if isinstance(file_data.get("metadata"), dict) else None,
                         "last_modified": file_data.get("updated_at"),
-                        "full_path": self.get_metrics_file_path(filename),
+                        "full_path": f"{user_path}/{filename}",
                         "chart_type": self.get_chart_type_from_filename(filename)
                     })
             
-            logger.info(f"Encontrados {len(chart_files)} archivos de gráficos HTML en Supabase Storage")
+            logger.info(f"Encontrados {len(chart_files)} archivos de gráficos HTML en Supabase Storage para usuario {user_id}")
             return chart_files
             
         except Exception as e:
@@ -383,21 +415,23 @@ class SupabaseStorageService:
         
         return filename_to_chart.get(filename)
     
-    def get_file_info(self, filename: str = "api_response_B.json") -> Dict[str, Any]:
+    def get_file_info(self, user_id: str, filename: str = "api_response_B.json") -> Dict[str, Any]:
         """
         Obtiene información sobre un archivo en Supabase Storage
         
         Args:
+            user_id: ID del usuario propietario del archivo
             filename: Nombre del archivo
             
         Returns:
             Dict: Información del archivo (tamaño, fecha de modificación, etc.)
         """
         try:
-            file_path = self.get_metrics_file_path(filename)
+            file_path = self.get_metrics_file_path(user_id, filename)
+            user_path = self.get_user_base_path(user_id)
             
             # Listar archivos en el directorio para obtener metadatos
-            response = self.client.storage.from_(self.bucket_name).list(self.base_prefix)
+            response = self.client.storage.from_(self.bucket_name).list(user_path)
             
             # Buscar el archivo específico
             file_info = None
@@ -407,7 +441,7 @@ class SupabaseStorageService:
                     break
             
             if not file_info:
-                raise Exception(f"Archivo {filename} no encontrado en {self.base_prefix}")
+                raise Exception(f"Archivo {filename} no encontrado en {user_path}")
             
             return {
                 "name": file_info.get("name"),
@@ -421,15 +455,19 @@ class SupabaseStorageService:
             logger.error(f"Error al obtener información del archivo: {str(e)}")
             raise Exception(f"Error al obtener información del archivo: {str(e)}")
     
-    def list_metrics_files(self) -> list:
+    def list_metrics_files(self, user_id: str) -> list:
         """
-        Lista todos los archivos de métricas disponibles en el directorio base
+        Lista todos los archivos de métricas disponibles en el directorio del usuario
+        
+        Args:
+            user_id: ID del usuario propietario de los archivos
         
         Returns:
             list: Lista de archivos JSON de métricas disponibles
         """
         try:
-            response = self.client.storage.from_(self.bucket_name).list(self.base_prefix)
+            user_path = self.get_user_base_path(user_id)
+            response = self.client.storage.from_(self.bucket_name).list(user_path)
             
             # Filtrar solo archivos JSON de métricas
             metrics_files = []
@@ -440,31 +478,36 @@ class SupabaseStorageService:
                         "name": filename,
                         "size": file_data.get("metadata", {}).get("size"),
                         "last_modified": file_data.get("updated_at"),
-                        "full_path": self.get_metrics_file_path(filename)
+                        "full_path": f"{user_path}/{filename}"
                     })
             
-            logger.info(f"Encontrados {len(metrics_files)} archivos de métricas en Supabase Storage")
+            logger.info(f"Encontrados {len(metrics_files)} archivos de métricas en Supabase Storage para usuario {user_id}")
             return metrics_files
             
         except Exception as e:
             logger.error(f"Error al listar archivos de métricas: {str(e)}")
             return []
     
-    def health_check(self) -> Dict[str, Any]:
+    def health_check(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Verifica la conectividad y estado del servicio de Supabase Storage
+        
+        Args:
+            user_id: ID del usuario (opcional) para verificar su carpeta específica
         
         Returns:
             Dict: Estado del servicio y información de conectividad
         """
         try:
             # Intentar listar archivos como test de conectividad
-            self.client.storage.from_(self.bucket_name).list(self.base_prefix)
+            test_path = self.get_user_base_path(user_id) if user_id else ""
+            self.client.storage.from_(self.bucket_name).list(test_path)
             
             return {
                 "status": "healthy",
                 "bucket": self.bucket_name,
-                "base_prefix": self.base_prefix,
+                "user_id": user_id,
+                "test_path": test_path,
                 "supabase_url": self.supabase_url,
                 "timestamp": datetime.now().isoformat(),
                 "message": "Conexión con Supabase Storage exitosa"
@@ -474,7 +517,7 @@ class SupabaseStorageService:
             return {
                 "status": "error",
                 "bucket": self.bucket_name,
-                "base_prefix": self.base_prefix,
+                "user_id": user_id,
                 "supabase_url": self.supabase_url,
                 "timestamp": datetime.now().isoformat(),
                 "error": str(e),
@@ -511,8 +554,17 @@ def get_supabase_storage(config=None):
     return _supabase_storage_instance
 
 
-def guardar_json_en_supabase(datos_informe: Dict[str, Any], config=None) -> Dict[str, str]:
-    """Guarda un informe JSON en Supabase Storage usando upsert y manejo en memoria."""
+def guardar_json_en_supabase(user_id: str, datos_informe: Dict[str, Any], config=None) -> Dict[str, str]:
+    """Guarda un informe JSON en Supabase Storage usando upsert y manejo en memoria.
+    
+    Args:
+        user_id: ID del usuario propietario del informe
+        datos_informe: Datos del informe a guardar
+        config: Configuración opcional
+        
+    Returns:
+        Dict con el resultado de la operación
+    """
     service = get_supabase_storage(config)
     if service is None:
         return {
@@ -520,4 +572,4 @@ def guardar_json_en_supabase(datos_informe: Dict[str, Any], config=None) -> Dict
             "message": "No se pudo inicializar el servicio de Supabase Storage.",
         }
 
-    return service.save_portfolio_report_json(datos_informe)
+    return service.save_portfolio_report_json(user_id, datos_informe)

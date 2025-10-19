@@ -25,7 +25,17 @@ logger = logging.getLogger(__name__)
 class PortfolioManagerClient:
     """Cliente que entrega datos del Portfolio Manager leyendo el JSON en disco."""
 
-    def __init__(self) -> None:
+    def __init__(self, user_id: str) -> None:
+        """
+        Inicializa el cliente del Portfolio Manager para un usuario específico.
+        
+        Args:
+            user_id: ID del usuario para acceder a sus datos en Supabase Storage
+        """
+        if not user_id:
+            raise ValueError("user_id es requerido para inicializar PortfolioManagerClient")
+        
+        self._user_id = user_id
         self._enabled = settings.PORTFOLIO_MANAGER_ENABLED
         self._refresh_interval = timedelta(minutes=settings.PORTFOLIO_MANAGER_REFRESH_MINUTES or 15)
         self._default_period = settings.PORTFOLIO_MANAGER_DEFAULT_PERIOD
@@ -42,7 +52,7 @@ class PortfolioManagerClient:
         candidates = self._build_portfolio_path_candidates(configured_path, base_path, backend_root, project_root)
         self._portfolio_data_path = self._select_portfolio_path(candidates, project_root)
         self._portfolio_path_candidates = candidates
-        logger.debug("Rutas candidatas evaluadas para portfolio_data.json: %s", ", ".join(str(p) for p in candidates))
+        logger.debug("Rutas candidatas evaluadas para portfolio_data.json (user_id=%s): %s", user_id, ", ".join(str(p) for p in candidates))
 
         data_dir = self._portfolio_data_path.parent
         charts_root = data_dir.parent if data_dir else None
@@ -51,18 +61,9 @@ class PortfolioManagerClient:
         self._supabase_service: Optional[SupabaseStorageService] = None
         self._supabase_enabled: bool = False
         self._supabase_bucket: str = settings.SUPABASE_BUCKET_NAME or "portfolio-files"
-        data_prefix_candidate = getattr(settings, "SUPABASE_PORTFOLIO_DATA_PREFIX", None) or "Informes"
-        charts_prefix_candidate = getattr(settings, "SUPABASE_PORTFOLIO_CHARTS_PREFIX", None) or (settings.SUPABASE_BASE_PREFIX or "Graficos")
-        assets_prefix_candidate = getattr(settings, "SUPABASE_PORTFOLIO_ASSETS_PREFIX", None)
-
-        self._supabase_data_prefix = self._normalize_supabase_segment(data_prefix_candidate)
-        self._supabase_charts_prefix = self._normalize_supabase_segment(charts_prefix_candidate)
-        if assets_prefix_candidate:
-            self._supabase_assets_prefix = self._normalize_supabase_segment(assets_prefix_candidate)
-        else:
-            base_prefix = self._supabase_charts_prefix
-            default_assets = f"{base_prefix}/assets" if base_prefix else "assets"
-            self._supabase_assets_prefix = self._normalize_supabase_segment(default_assets)
+        
+        # ✅ ELIMINADOS: prefijos hardcodeados
+        # Ya no usamos "Informes" ni "Graficos", ahora usamos {user_id}/
 
         self._chart_paths: Dict[str, Union[Path, str]] = {}
         self._chart_cache: Dict[str, str] = {}
@@ -188,9 +189,17 @@ class PortfolioManagerClient:
             return ""
         return str(segment).strip().strip("/\\")
 
-    def _build_supabase_path(self, *segments: Optional[str]) -> str:
-        normalized_parts = [self._normalize_supabase_segment(part) for part in segments if part]
-        return "/".join(part for part in normalized_parts if part)
+    def _build_supabase_path(self, filename: str) -> str:
+        """
+        Construye la ruta de Supabase usando user_id.
+        
+        Args:
+            filename: Nombre del archivo
+            
+        Returns:
+            Ruta completa: {user_id}/{filename}
+        """
+        return f"{self._user_id}/{filename}"
 
     @staticmethod
     def _split_supabase_path(path: str) -> Tuple[str, str]:
@@ -332,8 +341,8 @@ class PortfolioManagerClient:
                     continue
                 mapping[normalized] = path
 
-        portfolio_path = self._build_supabase_path(self._supabase_charts_prefix, "portfolio_chart.html")
-        allocation_path = self._build_supabase_path(self._supabase_charts_prefix, "allocation_chart.html")
+        portfolio_path = self._build_supabase_path("portfolio_chart.html")
+        allocation_path = self._build_supabase_path("allocation_chart.html")
 
         register(
             portfolio_path,
@@ -370,7 +379,7 @@ class PortfolioManagerClient:
             symbol = file_name.replace("_chart.html", "").replace(".html", "")
             if not symbol:
                 continue
-            path = self._build_supabase_path(self._supabase_assets_prefix, file_name)
+            path = self._build_supabase_path(file_name)
             register(
                 path,
                 [
@@ -402,13 +411,15 @@ class PortfolioManagerClient:
         return mapping
 
     def _list_supabase_asset_files(self) -> List[str]:
+        """Lista archivos de gráficos de activos en Supabase para el usuario actual."""
         if not self._supabase_service:
             return []
-        prefix = self._supabase_assets_prefix or ""
+        
+        # Listar archivos en la carpeta del usuario
         try:
-            response = self._supabase_service.client.storage.from_(self._supabase_bucket).list(prefix)
+            response = self._supabase_service.client.storage.from_(self._supabase_bucket).list(self._user_id)
         except Exception as exc:
-            logger.debug("Fallo al listar archivos en Supabase (%s): %s", prefix, exc)
+            logger.debug("Fallo al listar archivos en Supabase (user_id=%s): %s", self._user_id, exc)
             return []
 
         files: List[str] = []
@@ -441,28 +452,21 @@ class PortfolioManagerClient:
         return None
 
     async def _load_from_supabase(self) -> Optional[Dict[str, Any]]:
+        """Carga datos desde Supabase para el usuario específico."""
         if not self._supabase_enabled or not self._supabase_service:
             return None
 
-        dashboard_path = self._build_supabase_path(self._supabase_data_prefix, "portfolio_data.json")
-
+        # ✅ Nueva ruta con user_id
         try:
-            raw_bytes = await asyncio.to_thread(self._download_supabase_file, dashboard_path)
+            # Usar el método del servicio de Supabase que ya acepta user_id
+            content = self._supabase_service.read_report_json(self._user_id, "portfolio_data.json")
+            data = content if isinstance(content, dict) else json.loads(content)
         except Exception as exc:
-            logger.warning("No se pudo descargar portfolio_data.json desde Supabase (%s): %s", dashboard_path, exc)
+            logger.warning("No se pudo descargar portfolio_data.json desde Supabase (user_id=%s): %s", self._user_id, exc)
             return None
 
-        try:
-            text = raw_bytes.decode("utf-8")
-            data = json.loads(text)
-        except Exception as exc:
-            logger.exception("Error parseando portfolio_data.json descargado de Supabase: %s", exc)
-            return None
-
-        metadata = await asyncio.to_thread(self._get_supabase_metadata, dashboard_path)
+        # Obtener metadata del archivo (timestamp) - ya no es necesario, usaremos el timestamp del JSON
         file_timestamp = None
-        if metadata and isinstance(metadata, dict):
-            file_timestamp = self._parse_iso_datetime(metadata.get("updated_at"))
 
         asset_files = await asyncio.to_thread(self._list_supabase_asset_files)
 
@@ -509,10 +513,10 @@ class PortfolioManagerClient:
             return self._normalize_supabase_segment(raw)
 
         if normalized in {"portfolio", "portfolio_chart", "portfolio_performance", "performance", "cumulative_returns"}:
-            return self._build_supabase_path(self._supabase_charts_prefix, "portfolio_chart.html")
+            return self._build_supabase_path("portfolio_chart.html")
 
         if normalized in {"allocation", "allocation_chart", "composition", "composition_donut", "portfolio_composition"}:
-            return self._build_supabase_path(self._supabase_charts_prefix, "allocation_chart.html")
+            return self._build_supabase_path("allocation_chart.html")
 
         base_symbol = raw
         if normalized.endswith("_chart"):
@@ -523,7 +527,7 @@ class PortfolioManagerClient:
             return None
 
         filename = f"{base_symbol}_chart.html"
-        return self._build_supabase_path(self._supabase_assets_prefix, filename)
+        return self._build_supabase_path(filename)
 
     async def _fetch_supabase_chart(self, path: str) -> Optional[str]:
         if not self._supabase_service:
@@ -957,12 +961,29 @@ class PortfolioManagerClient:
         }
 
 
-portfolio_runtime = PortfolioManagerClient()
+# ✅ FACTORY PATTERN: Crear cliente por usuario
+def get_portfolio_manager_client(user_id: str) -> PortfolioManagerClient:
+    """
+    Factory para crear un cliente de Portfolio Manager para un usuario específico.
+    
+    Args:
+        user_id: ID del usuario para el cual crear el cliente
+        
+    Returns:
+        PortfolioManagerClient: Cliente configurado para el usuario
+    """
+    return PortfolioManagerClient(user_id)
+
+
+# ❌ ELIMINADO: Singleton compartido
+# portfolio_runtime = PortfolioManagerClient()
 
 
 async def startup_portfolio_manager() -> None:
-    await portfolio_runtime.ensure_started()
+    """Startup hook - ya no es necesario con el patrón factory."""
+    pass
 
 
 async def shutdown_portfolio_manager() -> None:
-    await portfolio_runtime.shutdown()
+    """Shutdown hook - ya no es necesario con el patrón factory."""
+    pass

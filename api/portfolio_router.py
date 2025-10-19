@@ -11,10 +11,13 @@ import json
 import glob
 from datetime import datetime
 from typing import Dict, Any, Optional, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse, HTMLResponse
 import logging
 from pydantic import BaseModel
+
+from auth.dependencies import get_current_user
+from db_models.models import User
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -294,19 +297,23 @@ async def analyze_custom_portfolio(request: PortfolioAnalysisRequest) -> Dict[st
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/portfolio/live-metrics")
-async def get_live_metrics():
+async def get_live_metrics(current_user: User = Depends(get_current_user)):
     """
     Endpoint para obtener las métricas en vivo del portfolio desde Supabase Storage
     Retorna performance_metrics y risk_analysis del archivo JSON en Supabase
+    
+    Requiere autenticación mediante token JWT.
     """
+    user_id = str(current_user.id)
+    
     try:
         # Verificar si Supabase está habilitado
         if not SUPABASE_ENABLED or not supabase_storage:
             # Fallback al método local si Supabase no está disponible
             return await get_live_metrics_local()
         
-        # Leer métricas desde Supabase Storage
-        data = await supabase_storage.read_metrics_json("api_response_B.json")
+        # Leer métricas desde Supabase Storage para el usuario específico
+        data = await supabase_storage.read_metrics_json(user_id, "api_response_B.json")
         
         # Extraer las secciones requeridas
         response_data = {
@@ -316,14 +323,15 @@ async def get_live_metrics():
             "performance_metrics": data.get("performance_metrics", {}),
             "risk_analysis": data.get("risk_analysis", {}),
             "correlations": data.get("correlations", {}),
-            "source": "supabase_storage"
+            "source": "supabase_storage",
+            "user_id": user_id
         }
         
-        logger.info("Métricas en vivo servidas exitosamente desde Supabase Storage")
+        logger.info("Métricas en vivo servidas exitosamente desde Supabase Storage para usuario %s", user_id)
         return response_data
         
     except Exception as e:
-        logger.error(f"Error al obtener métricas desde Supabase: {str(e)}")
+        logger.error(f"Error al obtener métricas desde Supabase para usuario {user_id}: {str(e)}")
         # Intentar fallback al método local
         try:
             logger.info("Intentando fallback a archivos locales...")
@@ -383,28 +391,33 @@ async def get_live_metrics_local():
         )
 
 @router.get("/api/portfolio/charts/{chart_name}")
-async def get_portfolio_chart(chart_name: str):
+async def get_portfolio_chart(chart_name: str, current_user: User = Depends(get_current_user)):
     """
     Endpoint para servir los gráficos HTML desde Supabase Storage
     
     Args:
         chart_name: Nombre del gráfico ('cumulative_returns', 'composition_donut', etc.)
+        current_user: Usuario autenticado (inyectado)
+        
+    Requiere autenticación mediante token JWT.
     """
+    user_id = str(current_user.id)
+    
     try:
         # Verificar si Supabase está habilitado
         if not SUPABASE_ENABLED or not supabase_storage:
             # Fallback al método local si Supabase no está disponible
             return await get_portfolio_chart_local(chart_name)
         
-        # Leer gráfico HTML desde Supabase Storage
-        html_content = await supabase_storage.read_html_chart(chart_name)
+        # Leer gráfico HTML desde Supabase Storage para el usuario
+        html_content = await supabase_storage.read_html_chart(user_id, chart_name)
         
-        logger.info(f"Sirviendo gráfico: {chart_name} desde Supabase Storage")
+        logger.info(f"Sirviendo gráfico: {chart_name} desde Supabase Storage para usuario {user_id}")
         
         return HTMLResponse(content=html_content)
         
     except Exception as e:
-        logger.error(f"Error al servir gráfico desde Supabase: {str(e)}")
+        logger.error(f"Error al servir gráfico desde Supabase para usuario {user_id}: {str(e)}")
         # Intentar fallback al método local
         try:
             logger.info(f"Intentando fallback a archivos locales para gráfico: {chart_name}")
@@ -562,17 +575,22 @@ async def portfolio_health_check():
 # ===== NUEVOS ENDPOINTS PARA SUPABASE STORAGE =====
 
 @router.get("/api/portfolio/signed-url/{filename}")
-async def get_signed_url(filename: str, expires_in: int = 3600):
+async def get_signed_url(filename: str, expires_in: int = 3600, current_user: User = Depends(get_current_user)):
     """
     Genera una URL firmada para acceso directo a un archivo de métricas en Supabase Storage
     
     Args:
         filename: Nombre del archivo (ej: api_response_B.json)
         expires_in: Tiempo de expiración en segundos (por defecto: 1 hora)
+        current_user: Usuario autenticado (inyectado)
     
     Returns:
         Dict con la URL firmada
+        
+    Requiere autenticación mediante token JWT.
     """
+    user_id = str(current_user.id)
+    
     try:
         if not SUPABASE_ENABLED or not supabase_storage:
             raise HTTPException(
@@ -580,18 +598,19 @@ async def get_signed_url(filename: str, expires_in: int = 3600):
                 detail="Servicio de Supabase Storage no está disponible"
             )
         
-        signed_url = supabase_storage.create_signed_url(filename, expires_in)
+        signed_url = supabase_storage.create_signed_url(user_id, filename, expires_in)
         
         return {
             "status": "success",
             "signed_url": signed_url,
             "filename": filename,
             "expires_in": expires_in,
-            "created_at": datetime.now().isoformat()
+            "created_at": datetime.now().isoformat(),
+            "user_id": user_id
         }
         
     except Exception as e:
-        logger.error(f"Error al generar URL firmada: {str(e)}")
+        logger.error(f"Error al generar URL firmada para usuario {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/portfolio/supabase/metrics")
@@ -624,10 +643,14 @@ async def get_supabase_metrics(filename: str = "api_response_B.json"):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/portfolio/supabase/files")
-async def list_supabase_files():
+async def list_supabase_files(current_user: User = Depends(get_current_user)):
     """
-    Lista todos los archivos de métricas disponibles en Supabase Storage
+    Lista todos los archivos de métricas disponibles en Supabase Storage para el usuario autenticado
+    
+    Requiere autenticación mediante token JWT.
     """
+    user_id = str(current_user.id)
+    
     try:
         if not SUPABASE_ENABLED or not supabase_storage:
             raise HTTPException(
@@ -635,18 +658,19 @@ async def list_supabase_files():
                 detail="Servicio de Supabase Storage no está disponible"
             )
         
-        files = supabase_storage.list_metrics_files()
+        files = supabase_storage.list_metrics_files(user_id)
         
         return {
             "status": "success",
             "source": "supabase_storage",
             "files": files,
             "total_files": len(files),
+            "user_id": user_id,
             "retrieved_at": datetime.now().isoformat()
         }
         
     except Exception as e:
-        logger.error(f"Error al listar archivos en Supabase: {str(e)}")
+        logger.error(f"Error al listar archivos en Supabase para usuario {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/portfolio/supabase/health")
@@ -676,13 +700,18 @@ async def supabase_health_check():
 # ===== ENDPOINTS ESPECÍFICOS PARA GRÁFICOS EN SUPABASE =====
 
 @router.get("/api/portfolio/charts/supabase/{chart_name}")
-async def get_supabase_chart_direct(chart_name: str):
+async def get_supabase_chart_direct(chart_name: str, current_user: User = Depends(get_current_user)):
     """
     Obtiene un gráfico HTML directamente desde Supabase Storage (sin fallback)
     
     Args:
         chart_name: Nombre del gráfico ('cumulative_returns', etc.)
+        current_user: Usuario autenticado (inyectado)
+        
+    Requiere autenticación mediante token JWT.
     """
+    user_id = str(current_user.id)
+    
     try:
         if not SUPABASE_ENABLED or not supabase_storage:
             raise HTTPException(
@@ -690,25 +719,30 @@ async def get_supabase_chart_direct(chart_name: str):
                 detail="Servicio de Supabase Storage no está disponible"
             )
         
-        html_content = await supabase_storage.read_html_chart(chart_name)
+        html_content = await supabase_storage.read_html_chart(user_id, chart_name)
         
-        logger.info(f"Gráfico {chart_name} servido directamente desde Supabase Storage")
+        logger.info(f"Gráfico {chart_name} servido directamente desde Supabase Storage para usuario {user_id}")
         
         return HTMLResponse(content=html_content)
         
     except Exception as e:
-        logger.error(f"Error al obtener gráfico desde Supabase: {str(e)}")
+        logger.error(f"Error al obtener gráfico desde Supabase para usuario {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/portfolio/charts/signed-url/{chart_name}")
-async def get_chart_signed_url(chart_name: str, expires_in: int = 3600):
+async def get_chart_signed_url(chart_name: str, expires_in: int = 3600, current_user: User = Depends(get_current_user)):
     """
     Genera una URL firmada para acceso directo a un gráfico HTML en Supabase Storage
     
     Args:
         chart_name: Nombre del gráfico
         expires_in: Tiempo de expiración en segundos
+        current_user: Usuario autenticado (inyectado)
+        
+    Requiere autenticación mediante token JWT.
     """
+    user_id = str(current_user.id)
+    
     try:
         if not SUPABASE_ENABLED or not supabase_storage:
             raise HTTPException(
@@ -716,25 +750,30 @@ async def get_chart_signed_url(chart_name: str, expires_in: int = 3600):
                 detail="Servicio de Supabase Storage no está disponible"
             )
         
-        signed_url = supabase_storage.create_chart_signed_url(chart_name, expires_in)
+        signed_url = supabase_storage.create_chart_signed_url(user_id, chart_name, expires_in)
         
         return {
             "status": "success",
             "signed_url": signed_url,
             "chart_name": chart_name,
             "expires_in": expires_in,
+            "user_id": user_id,
             "created_at": datetime.now().isoformat()
         }
         
     except Exception as e:
-        logger.error(f"Error al generar URL firmada para gráfico: {str(e)}")
+        logger.error(f"Error al generar URL firmada para gráfico del usuario {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/portfolio/charts/list")
-async def list_available_charts():
+async def list_available_charts(current_user: User = Depends(get_current_user)):
     """
-    Lista todos los gráficos HTML disponibles en Supabase Storage
+    Lista todos los gráficos HTML disponibles en Supabase Storage para el usuario autenticado
+    
+    Requiere autenticación mediante token JWT.
     """
+    user_id = str(current_user.id)
+    
     try:
         if not SUPABASE_ENABLED or not supabase_storage:
             raise HTTPException(
@@ -742,16 +781,17 @@ async def list_available_charts():
                 detail="Servicio de Supabase Storage no está disponible"
             )
         
-        charts = supabase_storage.list_chart_files()
+        charts = supabase_storage.list_chart_files(user_id)
         
         return {
             "status": "success",
             "source": "supabase_storage",
             "charts": charts,
             "total_charts": len(charts),
+            "user_id": user_id,
             "retrieved_at": datetime.now().isoformat()
         }
         
     except Exception as e:
-        logger.error(f"Error al listar gráficos en Supabase: {str(e)}")
+        logger.error(f"Error al listar gráficos en Supabase para usuario {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

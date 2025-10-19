@@ -1,10 +1,11 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from crud.user_service import user_crud
 from auth.security import verify_token, create_credentials_exception
 from db_models.models import User
+from typing import Optional
 
 # OAuth2 scheme
 security = HTTPBearer()
@@ -15,6 +16,29 @@ async def get_current_user(
 ) -> User:
     """Get current authenticated user"""
     token = credentials.credentials
+    email = verify_token(token)
+    
+    if email is None:
+        raise create_credentials_exception()
+    
+    user = await user_crud.get_user_by_email(db, email=email)
+    if user is None:
+        raise create_credentials_exception()
+    
+    return user
+
+async def get_current_user_from_query(
+    token: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """Get current authenticated user from query parameter (for iframes)"""
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de autenticación requerido",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
     email = verify_token(token)
     
     if email is None:

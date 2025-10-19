@@ -1,3 +1,5 @@
+import os
+
 from pydantic_settings import BaseSettings
 from typing import Optional
 
@@ -79,3 +81,12 @@ class Settings(BaseSettings):
         env_file = ".env"
 
 settings = Settings() 
+
+# ===================================================================
+# AÑADE ESTA CORRECCIÓN AQUÍ
+# ===================================================================
+if settings.DATABASE_URL and settings.DATABASE_URL.startswith("postgresql://"):
+    settings.DATABASE_URL = settings.DATABASE_URL.replace(
+        "postgresql://", "postgresql+asyncpg://", 1
+    )
+# ===================================================================

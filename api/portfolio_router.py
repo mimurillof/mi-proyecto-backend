@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 import logging
 from pydantic import BaseModel
 
-from auth.dependencies import get_current_user
+from auth.dependencies import get_current_user, get_current_user_from_header_or_query
 from db_models.models import User
 
 # Configurar logging
@@ -391,7 +391,10 @@ async def get_live_metrics_local():
         )
 
 @router.get("/api/portfolio/charts/{chart_name}")
-async def get_portfolio_chart(chart_name: str, current_user: User = Depends(get_current_user)):
+async def get_portfolio_chart(
+    chart_name: str,
+    current_user: User = Depends(get_current_user_from_header_or_query)
+):
     """
     Endpoint para servir los grÃ¡ficos HTML desde Supabase Storage
     

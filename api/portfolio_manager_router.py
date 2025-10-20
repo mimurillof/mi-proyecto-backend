@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from services.portfolio_manager_service import get_portfolio_manager_client
-from auth.dependencies import get_current_user
+from auth.dependencies import get_current_user, get_current_user_from_header_or_query
 from db_models.models import User
 
 logger = logging.getLogger(__name__)
@@ -111,7 +111,7 @@ async def get_market_overview(
 @router.get("/charts/{chart_name}", response_class=HTMLResponse)
 async def get_chart(
     chart_name: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_header_or_query),
 ):
     """Entrega el HTML del grÃ¡fico solicitado del usuario autenticado (portfolio, allocation o sÃ­mbolo concreto)."""
     user_id = str(current_user.user_id)

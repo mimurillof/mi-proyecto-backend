@@ -10,6 +10,7 @@ from api.analizer_router import router as analizer_router
 from api.portfolio_router import router as portfolio_router
 from api.portfolio_manager_router import router as portfolio_manager_router
 from api.home_router import router as home_router
+from api.supabase_auth_router import router as supabase_auth_router
 from config import settings
 from services.portfolio_manager_service import (
     shutdown_portfolio_manager,
@@ -68,6 +69,10 @@ app.include_router(
     auth_router, 
     tags=["Authentication"], 
     prefix=f"{settings.API_V1_STR}/auth"
+)
+app.include_router(
+    supabase_auth_router,
+    tags=["Supabase Auth Integration"],
 )
 app.include_router(
     user_router, 

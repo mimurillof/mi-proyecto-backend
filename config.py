@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     # CORS Settings
     CLIENT_ORIGIN: str = "http://localhost:5173"
     # CORS_ORIGINS puede ser una lista o string separado por comas desde .env
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,https://chat-agent-horizon-cc5e16d4b37e.herokuapp.com,https://mi-proyecto-topaz-omega.vercel.app"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,https://chat-agent-horizon-cc5e16d4b37e.herokuapp.com,https://mi-proyecto-topaz-omega.vercel.app,https://horizon-next-app.vercel.app"
     
     def get_cors_origins(self) -> list:
         """Obtener lista de orígenes CORS"""

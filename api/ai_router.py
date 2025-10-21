@@ -6,13 +6,15 @@ AI Router - Endpoints para el agente financiero Horizon v3.0
 import os
 import tempfile
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from config import settings
 from models.schemas import APIResponse
 from services.remote_agent_client import remote_agent_client
+from auth.dependencies import get_current_user  # ✅ Importar dependencia de autenticación
+from db_models.models import User  # ✅ Importar modelo de Usuario
 
 router = APIRouter()
 
@@ -32,14 +34,21 @@ class ChatResponse(BaseModel):
     session_id: str = "unknown"
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat_with_agent(request: ChatRequest):
+async def chat_with_agent(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user)  # ✅ Requerir autenticación
+):
     """
     Endpoint principal para chat con el agente financiero
+    Requiere autenticación - el agente accederá solo a los archivos del usuario
     """
     try:
+        user_id = str(current_user.user_id)  # ✅ Obtener user_id del usuario autenticado
+        
         # Usar servicio remoto
         response_data = await remote_agent_client.process_message(
             message=request.message,
+            user_id=user_id,  # ✅ Pasar user_id al agente
             file_path=request.file_path,
             url=request.url
         )
@@ -66,12 +75,16 @@ async def chat_with_agent(request: ChatRequest):
 @router.post("/chat/upload")
 async def chat_with_file(
     message: str = Form(..., description="Mensaje del usuario"),
-    file: UploadFile = File(..., description="Archivo para análisis")
+    file: UploadFile = File(..., description="Archivo para análisis"),
+    current_user: User = Depends(get_current_user)  # ✅ Requerir autenticación
 ):
     """
     Endpoint para chat con archivo adjunto
+    Requiere autenticación - el agente accederá solo a los archivos del usuario
     """
     try:
+        user_id = str(current_user.user_id)  # ✅ Obtener user_id del usuario autenticado
+        
         # Guardar archivo temporalmente
         with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as temp_file:
             content = await file.read()
@@ -82,6 +95,7 @@ async def chat_with_file(
             # Usar servicio remoto
             response_data = await remote_agent_client.process_message(
                 message=message,
+                user_id=user_id,  # ✅ Pasar user_id al agente
                 file_path=temp_file_path
             )
             
@@ -157,14 +171,21 @@ async def health_check():
         )
 
 @router.post("/search-news")
-async def search_financial_news(query: str = Form(...)):
+async def search_financial_news(
+    query: str = Form(...),
+    current_user: User = Depends(get_current_user)  # ✅ Requerir autenticación
+):
     """
     Buscar noticias financieras
+    Requiere autenticación
     """
     try:
+        user_id = str(current_user.user_id)  # ✅ Obtener user_id del usuario autenticado
+        
         # Usar servicio remoto
         response_data = await remote_agent_client.process_message(
-            message=query
+            message=query,
+            user_id=user_id  # ✅ Pasar user_id al agente
         )
         
         # Normalizar la respuesta
@@ -189,15 +210,20 @@ async def search_financial_news(query: str = Form(...)):
 @router.post("/analyze-url")
 async def analyze_url(
     url: str = Form(...),
-    query: str = Form("Analiza esta página web")
+    query: str = Form("Analiza esta página web"),
+    current_user: User = Depends(get_current_user)  # ✅ Requerir autenticación
 ):
     """
     Analizar una URL específica
+    Requiere autenticación
     """
     try:
+        user_id = str(current_user.user_id)  # ✅ Obtener user_id del usuario autenticado
+        
         # Usar servicio remoto
         response_data = await remote_agent_client.process_message(
             message=query,
+            user_id=user_id,  # ✅ Pasar user_id al agente
             url=url
         )
         
@@ -224,12 +250,16 @@ async def analyze_url(
 async def predict_trend(
     symbol: str = Query(..., description="Símbolo financiero"),
     period: str = Query("1month", description="Período de análisis"),
-    include_news: bool = Query(True, description="Incluir análisis de noticias")
+    include_news: bool = Query(True, description="Incluir análisis de noticias"),
+    current_user: User = Depends(get_current_user)  # ✅ Requerir autenticación
 ):
     """
     Predice tendencias financieras usando el agente
+    Requiere autenticación
     """
     try:
+        user_id = str(current_user.user_id)  # ✅ Obtener user_id del usuario autenticado
+        
         # Crear consulta para predicción
         query = f"Analiza la tendencia de {symbol} para los próximos {period}"
         if include_news:
@@ -237,7 +267,8 @@ async def predict_trend(
         
         # Usar servicio remoto
         response_data = await remote_agent_client.process_message(
-            message=query
+            message=query,
+            user_id=user_id  # ✅ Pasar user_id al agente
         )
         
         return {

@@ -60,13 +60,15 @@ class RemoteChatAgentClient:
     async def process_message(
         self,
         message: str,
+        user_id: str,  # ✅ NUEVO: Requerido para multiusuario
         file_path: Optional[str] = None,
         url: Optional[str] = None,
         session_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Procesar un mensaje con el agente remoto"""
         payload = {
-            "message": message
+            "message": message,
+            "user_id": user_id  # ✅ Incluir user_id en el payload
         }
         
         if file_path:
@@ -81,13 +83,17 @@ class RemoteChatAgentClient:
     async def upload_file_chat(
         self,
         message: str,
+        user_id: str,  # ✅ NUEVO: Requerido para multiusuario
         file_content: bytes,
         filename: str,
         session_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Chat con archivo adjunto"""
         files = {"file": (filename, file_content)}
-        data = {"message": message}
+        data = {
+            "message": message,
+            "user_id": user_id  # ✅ Incluir user_id en el payload
+        }
         
         if session_id:
             data["session_id"] = session_id
@@ -96,6 +102,7 @@ class RemoteChatAgentClient:
     
     async def generate_portfolio_report(
         self,
+        user_id: str,  # ✅ NUEVO: Requerido para multiusuario
         model_preference: Optional[str] = None,
         context: Optional[Dict[str, Any]] = None,
         session_id: Optional[str] = None
@@ -105,6 +112,7 @@ class RemoteChatAgentClient:
         Usa procesamiento asíncrono con polling para evitar timeouts.
         """
         payload: Dict[str, Any] = {
+            "user_id": user_id,  # ✅ Incluir user_id en el payload
             "context": context or {},
         }
 

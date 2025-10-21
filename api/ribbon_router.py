@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
 
 try:
     from config import settings  # type: ignore[attr-defined]
@@ -19,6 +19,8 @@ from services.report_normalizer import (
     ensure_image_sources,
     ReportValidationError,
 )
+from auth.dependencies import get_current_user  # ✅ Importar dependencia de autenticación
+from db_models.models import User  # ✅ Importar modelo de Usuario
 
 
 router = APIRouter(prefix="/api/ribbon", tags=["Ribbon Actions"])
@@ -63,6 +65,7 @@ async def get_alerts():
 
 async def process_report_generation(
     report_id: str,
+    user_id: str,  # ✅ NUEVO: Requerido para multiusuario
     model_preference: Optional[str] = None,
     context: Optional[Dict[str, Any]] = None,
     session_id: Optional[str] = None
@@ -79,6 +82,7 @@ async def process_report_generation(
         # Generar reporte con el agente remoto
         # Ahora usa procesamiento asíncrono, puede usar Gemini Pro sin timeout
         report_response = await remote_agent_client.generate_portfolio_report(
+            user_id=user_id,  # ✅ Pasar user_id al agente
             model_preference=model_preference,  # Usará Gemini Pro si no se especifica
             context=context,
             session_id=session_id,
@@ -183,12 +187,15 @@ async def process_report_generation(
 @router.post("/custom-report/start")
 async def start_portfolio_report(
     background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),  # ✅ Requerir autenticación
     payload: Optional[Dict[str, Any]] = None
 ):
     """
     Inicia la generación asíncrona de un informe de portafolio.
     Retorna inmediatamente con un report_id para hacer polling.
+    Requiere autenticación - el agente accederá solo a los archivos del usuario.
     """
+    user_id = str(current_user.user_id)  # ✅ Obtener user_id del usuario autenticado
     normalized_payload = payload or {}
     
     # Generar ID único para el reporte
@@ -207,6 +214,7 @@ async def start_portfolio_report(
     background_tasks.add_task(
         process_report_generation,
         report_id,
+        user_id,  # ✅ Pasar user_id a la función de background
         normalized_payload.get("model_preference"),
         normalized_payload.get("context"),
         normalized_payload.get("session_id")
@@ -260,14 +268,19 @@ async def get_report_status(report_id: str):
 @router.post("/custom-report")
 async def trigger_portfolio_report(
     background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),  # ✅ Requerir autenticación
     payload: Optional[Dict[str, Any]] = None
 ):
-    """Solicita al agente remoto la generación de un informe de portafolio."""
-
+    """
+    Solicita al agente remoto la generación de un informe de portafolio.
+    Requiere autenticación - el agente accederá solo a los archivos del usuario.
+    """
+    user_id = str(current_user.user_id)  # ✅ Obtener user_id del usuario autenticado
     normalized_payload = payload or {}
 
     try:
         report_response = await remote_agent_client.generate_portfolio_report(
+            user_id=user_id,  # ✅ Pasar user_id al agente
             model_preference=normalized_payload.get("model_preference"),
             context=normalized_payload.get("context"),
             session_id=normalized_payload.get("session_id"),

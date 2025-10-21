@@ -121,7 +121,7 @@ async def process_report_generation(
         if enable_upload:
             config_obj = settings if settings is not None else None
             if clean_report_payload is not None:
-                storage_result = guardar_json_en_supabase(clean_report_payload, config_obj)
+                storage_result = guardar_json_en_supabase(user_id, clean_report_payload, config_obj)  # ✅ MULTIUSUARIO
             else:
                 storage_result = {
                     "status": "error",
@@ -137,10 +137,11 @@ async def process_report_generation(
                 # Generar PDF en background (no bloquear)
                 if clean_report_payload is not None:
                     try:
-                        await trigger_pdf_generation_task(
+                        trigger_pdf_generation_task(
                             clean_report_payload,
                             storage_result.get("path"),
                             config=settings if settings is not None else None,
+                            user_id=user_id  # ✅ MULTIUSUARIO: Pasar user_id al generador de PDF
                         )
                     except Exception as pdf_error:
                         logger.error(f"Error generando PDF: {pdf_error}")
@@ -319,7 +320,7 @@ async def trigger_portfolio_report(
         if enable_upload:
             config_obj = settings if settings is not None else None
             if clean_report_payload is not None:
-                storage_result = guardar_json_en_supabase(clean_report_payload, config_obj)
+                storage_result = guardar_json_en_supabase(user_id, clean_report_payload, config_obj)  # ✅ MULTIUSUARIO
             else:
                 storage_result = {
                     "status": "error",
@@ -338,6 +339,7 @@ async def trigger_portfolio_report(
                         clean_report_payload,
                         storage_result.get("path"),
                         config=settings if settings is not None else None,
+                        user_id=user_id  # ✅ MULTIUSUARIO: Pasar user_id al generador de PDF
                     )
             else:
                 logger.error(

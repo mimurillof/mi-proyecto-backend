@@ -40,13 +40,25 @@ def trigger_pdf_generation_task(
     *,
     config: Optional[Any] = None,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    user_id: Optional[str] = None,  # ✅ NUEVO: Requerido para multiusuario
 ) -> None:
     """Invoca el servicio remoto para generar el PDF del informe.
 
     Este método está pensado para ejecutarse en tareas de fondo.
+    
+    Args:
+        report_payload: Diccionario con el contenido del informe
+        storage_path: Ruta de almacenamiento en Supabase (opcional)
+        config: Objeto de configuración (opcional)
+        timeout: Timeout en segundos para la petición HTTP
+        user_id: ID del usuario propietario del PDF (requerido para multiusuario)
     """
     if not isinstance(report_payload, dict):
         logger.error("El payload del informe no es un diccionario válido: %s", type(report_payload))
+        return
+
+    if not user_id:
+        logger.error("user_id es requerido para generar PDF en modo multiusuario")
         return
 
     cfg = _resolve_config(config)
@@ -101,6 +113,7 @@ def trigger_pdf_generation_task(
     }
 
     payload: Dict[str, Any] = {
+        "user_id": user_id,  # ✅ MULTIUSUARIO: Requerido por el servicio de PDF
         "json_data": normalized_report,
         "no_upload": False,
         "log_level": "INFO",

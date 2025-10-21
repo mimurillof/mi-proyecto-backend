@@ -369,3 +369,56 @@ async def trigger_portfolio_report(
             detail=f"Error solicitando informe al agente remoto: {exc}"
         ) from exc
 
+
+@router.post("/regenerate-pdf")
+async def regenerate_pdf_from_existing_json(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Regenera el PDF directamente desde el estructura_informe.json existente en Supabase.
+    NO llama al agente de IA, solo toma el JSON ya guardado y genera el PDF.
+    Útil cuando ya existe un informe y solo se necesita regenerar el PDF.
+    """
+    user_id = str(current_user.user_id)
+    
+    try:
+        # Verificar que Supabase esté habilitado
+        enable_upload = bool(getattr(settings, "ENABLE_SUPABASE_UPLOAD", False))
+        if not enable_upload:
+            raise HTTPException(
+                status_code=503,
+                detail="Supabase no está configurado. No se puede regenerar el PDF."
+            )
+        
+        # Construir la ruta esperada del JSON en Supabase
+        bucket_name = getattr(settings, "SUPABASE_BUCKET_NAME", "portfolio-files")
+        json_path = f"{user_id}/estructura_informe.json"
+        
+        logger.info(f"Intentando regenerar PDF desde {json_path} para usuario {user_id}")
+        
+        # El PDF Generator descargará el JSON directamente desde Supabase
+        # Solo necesitamos invocar el servicio con user_id
+        pdf_result = trigger_pdf_generation_task(
+            report_payload={},  # Payload vacío, el generador descargará desde Supabase
+            storage_path=json_path,
+            config=settings if settings is not None else None,
+            user_id=user_id
+        )
+        
+        logger.info(f"PDF regenerado exitosamente para usuario {user_id}: {pdf_result}")
+        
+        return {
+            "status": "success",
+            "message": "PDF regenerado exitosamente desde el JSON existente",
+            "user_id": user_id,
+            "json_path": json_path,
+            "pdf_result": pdf_result
+        }
+        
+    except Exception as exc:
+        logger.error(f"Error regenerando PDF para usuario {user_id}: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error regenerando PDF: {str(exc)}"
+        ) from exc
+

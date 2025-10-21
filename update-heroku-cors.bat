@@ -1,9 +1,0 @@
-@echo off
-echo Actualizando CORS_ORIGINS en Heroku...
-heroku config:set CORS_ORIGINS="http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,https://chat-agent-horizon-cc5e16d4b37e.herokuapp.com,https://mi-proyecto-topaz-omega.vercel.app,https://horizon-next-app.vercel.app" --app horizon-backend
-echo.
-echo ✅ CORS actualizado. Verificando configuracion...
-heroku config:get CORS_ORIGINS --app horizon-backend
-echo.
-echo Presiona cualquier tecla para continuar...
-pause

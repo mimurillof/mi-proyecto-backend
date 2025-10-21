@@ -22,6 +22,43 @@ from services.supabase_storage import SupabaseStorageService
 logger = logging.getLogger(__name__)
 
 
+def desanitize_filename_for_storage(filename: str) -> str:
+    """
+    Desanitiza un nombre de archivo que fue sanitizado para Supabase Storage.
+    Revierte los reemplazos hechos por sanitize_filename_for_storage() en Portfolio Manager.
+    
+    Args:
+        filename: Nombre de archivo sanitizado (ej: "_CARET_SPX_chart.html")
+    
+    Returns:
+        Nombre de archivo original (ej: "^SPX_chart.html")
+    
+    Examples:
+        >>> desanitize_filename_for_storage("_CARET_SPX_chart.html")
+        "^SPX_chart.html"
+        >>> desanitize_filename_for_storage("BTC-USD_chart.html")
+        "BTC-USD_chart.html"
+    """
+    # Mapeo inverso de la sanitización
+    reverse_replacements = {
+        '_CARET_': '^',      # Índices como ^SPX, ^GSPC
+        '_LT_': '<',         # Menor que
+        '_GT_': '>',         # Mayor que
+        '_COLON_': ':',      # Dos puntos
+        '_QUOTE_': '"',      # Comillas dobles
+        '_BSLASH_': '\\',    # Barra invertida
+        '_PIPE_': '|',       # Pipe
+        '_QMARK_': '?',      # Signo de interrogación
+        '_STAR_': '*',       # Asterisco
+    }
+    
+    desanitized = filename
+    for sanitized_token, original_char in reverse_replacements.items():
+        desanitized = desanitized.replace(sanitized_token, original_char)
+    
+    return desanitized
+
+
 class PortfolioManagerClient:
     """Cliente que entrega datos del Portfolio Manager leyendo el JSON en disco."""
 
@@ -376,10 +413,15 @@ class PortfolioManagerClient:
         for file_name in asset_files or []:
             if not isinstance(file_name, str) or not file_name.endswith(".html"):
                 continue
-            symbol = file_name.replace("_chart.html", "").replace(".html", "")
+            
+            # Desanitizar el nombre del archivo para obtener el símbolo original
+            desanitized_name = desanitize_filename_for_storage(file_name)
+            symbol = desanitized_name.replace("_chart.html", "").replace(".html", "")
+            
             if not symbol:
                 continue
-            path = self._build_supabase_path(file_name)
+            
+            path = self._build_supabase_path(file_name)  # Usar nombre sanitizado para la ruta
             register(
                 path,
                 [

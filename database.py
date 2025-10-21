@@ -11,7 +11,12 @@ if DATABASE_URL and not DATABASE_URL.startswith("postgresql+asyncpg"):
 engine = create_async_engine(
     DATABASE_URL,
     echo=settings.ENVIRONMENT == "development",
-    future=True
+    future=True,
+    pool_size=20,  # Aumentar el tamaño del pool de conexiones
+    max_overflow=10,  # Permitir hasta 10 conexiones adicionales temporales
+    pool_timeout=30,  # Tiempo de espera para obtener una conexión
+    pool_recycle=3600,  # Reciclar conexiones cada hora
+    pool_pre_ping=True  # Verificar conexiones antes de usarlas
 )
 
 # Create async session factory

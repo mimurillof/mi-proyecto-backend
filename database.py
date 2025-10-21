@@ -16,7 +16,13 @@ engine = create_async_engine(
     max_overflow=10,  # Permitir hasta 10 conexiones adicionales temporales
     pool_timeout=30,  # Tiempo de espera para obtener una conexión
     pool_recycle=3600,  # Reciclar conexiones cada hora
-    pool_pre_ping=True  # Verificar conexiones antes de usarlas
+    pool_pre_ping=True,  # Verificar conexiones antes de usarlas
+    connect_args={
+        "statement_cache_size": 0,  # CRÍTICO: Deshabilitar prepared statements para compatibilidad con Supabase Transaction Pooler
+        "server_settings": {
+            "jit": "off"  # Optimización adicional para poolers
+        }
+    }
 )
 
 # Create async session factory

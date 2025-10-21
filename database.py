@@ -19,10 +19,13 @@ engine = create_async_engine(
     pool_pre_ping=True,  # Verificar conexiones antes de usarlas
     connect_args={
         "statement_cache_size": 0,  # CRÍTICO: Deshabilitar prepared statements para compatibilidad con Supabase Transaction Pooler
+        "prepared_statement_cache_size": 0,  # Redundancia para asyncpg
         "server_settings": {
             "jit": "off"  # Optimización adicional para poolers
         }
-    }
+    },
+    # FORZAR limpieza de conexiones viejas
+    pool_reset_on_return="rollback"
 )
 
 # Create async session factory

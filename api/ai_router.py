@@ -7,8 +7,9 @@ import os
 import tempfile
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, Depends, Header
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
+import json
 
 from config import settings
 from models.schemas import APIResponse
@@ -33,14 +34,14 @@ class ChatResponse(BaseModel):
     token_usage: dict = {}
     session_id: str = "unknown"
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat")
 async def chat_with_agent(
     request: ChatRequest,
     current_user: User = Depends(get_current_user),  # ✅ Requerir autenticación
     authorization: Optional[str] = Header(None)  # ✅ Obtener header Authorization
 ):
     """
-    Endpoint principal para chat con el agente financiero
+    Endpoint principal para chat con el agente financiero (con streaming SSE)
     Requiere autenticación - el agente accederá solo a los archivos del usuario
     """
     try:
@@ -51,27 +52,38 @@ async def chat_with_agent(
         if authorization and authorization.startswith("Bearer "):
             auth_token = authorization.split(" ", 1)[1]
         
-        # Usar servicio remoto
-        response_data = await remote_agent_client.process_message(
-            message=request.message,
-            user_id=user_id,  # ✅ Pasar user_id al agente
-            file_path=request.file_path,
-            url=request.url,
-            auth_token=auth_token  # ✅ Pasar token JWT al agente
+        async def event_generator():
+            """Genera eventos SSE desde el agent"""
+            try:
+                async for chunk_data in remote_agent_client.process_message_stream(
+                    message=request.message,
+                    user_id=user_id,
+                    file_path=request.file_path,
+                    url=request.url,
+                    auth_token=auth_token
+                ):
+                    # Reenviar chunks SSE al frontend
+                    yield f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n"
+                    
+                    # Si es el último chunk, terminar
+                    if chunk_data.get("done"):
+                        break
+            except Exception as e:
+                error_data = {
+                    "error": str(e),
+                    "done": True
+                }
+                yield f"data: {json.dumps(error_data)}\n\n"
+        
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Nginx: disable buffering
+            }
         )
-        
-        # Normalizar la respuesta para garantizar compatibilidad
-        normalized_response = {
-            "response": response_data.get("response", "Sin respuesta"),
-            "model_used": response_data.get("model_used", "unknown"),
-            "tools_used": response_data.get("tools_used", []),
-            "metadata": response_data.get("metadata", {}),
-            "urls_processed": response_data.get("urls_processed", []),
-            "token_usage": response_data.get("token_usage", {}),
-            "session_id": response_data.get("session_id", "unknown")
-        }
-        
-        return ChatResponse(**normalized_response)
     
     except Exception as e:
         raise HTTPException(

@@ -4,7 +4,8 @@ Cliente HTTP para comunicación con el servicio remoto del agente de chat
 
 import httpx
 import asyncio
-from typing import Optional, Dict, Any, List
+import json
+from typing import Optional, Dict, Any, List, AsyncGenerator
 from config import settings
 
 class RemoteChatAgentClient:
@@ -81,6 +82,56 @@ class RemoteChatAgentClient:
             payload["session_id"] = session_id
         
         return await self._make_request("POST", "/chat", json=payload)
+    
+    async def process_message_stream(
+        self,
+        message: str,
+        user_id: str,
+        file_path: Optional[str] = None,
+        url: Optional[str] = None,
+        session_id: Optional[str] = None,
+        auth_token: Optional[str] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Procesar un mensaje con streaming SSE.
+        Yields: dict con chunks de texto o metadata final
+        """
+        payload = {
+            "message": message,
+            "user_id": user_id,
+            "auth_token": auth_token
+        }
+        
+        if file_path:
+            payload["file_path"] = file_path
+        if url:
+            payload["url"] = url
+        if session_id:
+            payload["session_id"] = session_id
+        
+        # Usar streaming con httpx
+        async with httpx.AsyncClient(timeout=300.0) as client:  # 5 min timeout total
+            async with client.stream(
+                "POST",
+                f"{self.base_url}/chat",
+                json=payload,
+                headers={"Accept": "text/event-stream"}
+            ) as response:
+                response.raise_for_status()
+                
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data_str = line[6:]  # Remover "data: "
+                        try:
+                            data = json.loads(data_str)
+                            yield data
+                            
+                            # Si llega "done": True, terminar
+                            if data.get("done"):
+                                break
+                        except json.JSONDecodeError:
+                            # Ignorar líneas que no son JSON válido
+                            continue
     
     async def upload_file_chat(
         self,

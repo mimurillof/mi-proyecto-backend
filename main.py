@@ -8,6 +8,7 @@ from api import user_router, auth_router, ai_router
 from api.ribbon_router import router as ribbon_router
 from api.analizer_router import router as analizer_router
 from api.portfolio_router import router as portfolio_router
+from api.storage_router import router as storage_router
 from api.portfolio_manager_router import router as portfolio_manager_router
 from api.home_router import router as home_router
 from api.supabase_auth_router import router as supabase_auth_router
@@ -88,6 +89,10 @@ app.include_router(
     portfolio_router, 
     tags=["Portfolio"], 
     prefix=""  # Ya incluye el prefijo /api/portfolio en el router
+)
+
+app.include_router(
+    storage_router,
 )
 
 app.include_router(

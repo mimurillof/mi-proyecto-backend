@@ -9,7 +9,7 @@ Proporciona funciones para:
 import os
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Set, Tuple
 from datetime import datetime
 
 from urllib.parse import quote
@@ -205,6 +205,87 @@ class SupabaseStorageService:
         logger.info("Archivo %s leído desde Supabase Storage", file_path)
         return data
     
+    def list_user_files(
+        self,
+        user_id: str,
+        allowed_extensions: Optional[Set[str]] = None,
+        include_metadata: bool = True,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Lista archivos en la carpeta del usuario con filtrado por extensión.
+
+        Args:
+            user_id: ID del usuario propietario.
+            allowed_extensions: Conjunto de extensiones permitidas (con punto), p.ej. {".json"}.
+            include_metadata: Incluir información adicional del objeto.
+            limit: Límite máximo de elementos a devolver (None = sin límite).
+
+        Returns:
+            Lista de diccionarios con información básica del archivo.
+        """
+        try:
+            normalized_exts: Optional[Set[str]] = None
+            if allowed_extensions:
+                normalized_exts = {ext.lower() if ext.startswith(".") else f".{ext.lower()}" for ext in allowed_extensions}
+
+            user_path = self.get_user_base_path(user_id)
+            response = self.client.storage.from_(self.bucket_name).list(user_path)
+
+            files: List[Dict[str, Any]] = []
+            for index, file_data in enumerate(response or []):
+                if limit is not None and index >= limit:
+                    break
+
+                name = file_data.get("name") or ""
+                ext = os.path.splitext(name)[1].lower()
+
+                if normalized_exts and ext not in normalized_exts:
+                    continue
+
+                item: Dict[str, Any] = {
+                    "name": name,
+                    "ext": ext.lstrip("."),
+                    "full_path": f"{user_path}/{name}",
+                }
+
+                if include_metadata:
+                    metadata = file_data.get("metadata")
+                    if isinstance(metadata, dict):
+                        item["size"] = metadata.get("size")
+                        item["content_type"] = metadata.get("mimetype")
+                    item["updated_at"] = file_data.get("updated_at")
+
+                files.append(item)
+
+            return files
+        except Exception as exc:
+            logger.error("Error al listar archivos del usuario %s: %s", user_id, exc)
+            return []
+
+    def download_user_file(self, user_id: str, filename: str) -> Tuple[bytes, Dict[str, Any]]:
+        """Descarga un archivo específico del usuario desde Supabase Storage.
+
+        Returns:
+            Tuple con los bytes del archivo y metadatos (cuando existan).
+        """
+        file_path = self.get_metrics_file_path(user_id, filename)
+
+        try:
+            response = self.client.storage.from_(self.bucket_name).download(file_path)
+            if not response:
+                raise FileNotFoundError(f"Archivo {file_path} vacío o inexistente en Supabase")
+
+            metadata: Dict[str, Any] = {}
+            try:
+                metadata = self.get_user_file_info(user_id, filename)
+            except Exception:
+                metadata = {}
+
+            return response, metadata
+        except Exception as exc:
+            logger.error("Error al descargar archivo %s para usuario %s: %s", filename, user_id, exc)
+            raise
+
     async def read_metrics_json(self, user_id: str, filename: str = "api_response_B.json") -> Dict[str, Any]:
         """
         Lee un archivo JSON de métricas desde Supabase Storage
@@ -415,45 +496,38 @@ class SupabaseStorageService:
         
         return filename_to_chart.get(filename)
     
-    def get_file_info(self, user_id: str, filename: str = "api_response_B.json") -> Dict[str, Any]:
-        """
-        Obtiene información sobre un archivo en Supabase Storage
-        
-        Args:
-            user_id: ID del usuario propietario del archivo
-            filename: Nombre del archivo
-            
-        Returns:
-            Dict: Información del archivo (tamaño, fecha de modificación, etc.)
-        """
+    def get_user_file_info(self, user_id: str, filename: str) -> Dict[str, Any]:
+        """Obtiene información detallada de un archivo del usuario."""
         try:
-            file_path = self.get_metrics_file_path(user_id, filename)
             user_path = self.get_user_base_path(user_id)
-            
-            # Listar archivos en el directorio para obtener metadatos
             response = self.client.storage.from_(self.bucket_name).list(user_path)
-            
-            # Buscar el archivo específico
+
             file_info = None
-            for file_data in response:
-                if file_data.get("name") == filename:
-                    file_info = file_data
+            for item in response or []:
+                if item.get("name") == filename:
+                    file_info = item
                     break
-            
+
             if not file_info:
-                raise Exception(f"Archivo {filename} no encontrado en {user_path}")
-            
+                raise FileNotFoundError(f"Archivo {filename} no encontrado para usuario {user_id}")
+
+            metadata = file_info.get("metadata") if isinstance(file_info.get("metadata"), dict) else {}
+            file_path = self.get_metrics_file_path(user_id, filename)
+
             return {
                 "name": file_info.get("name"),
-                "size": file_info.get("metadata", {}).get("size"),
+                "size": metadata.get("size"),
                 "last_modified": file_info.get("updated_at"),
-                "content_type": file_info.get("metadata", {}).get("mimetype"),
-                "full_path": file_path
+                "content_type": metadata.get("mimetype"),
+                "full_path": file_path,
             }
-            
-        except Exception as e:
-            logger.error(f"Error al obtener información del archivo: {str(e)}")
-            raise Exception(f"Error al obtener información del archivo: {str(e)}")
+        except Exception as exc:
+            logger.error("Error al obtener información del archivo %s para usuario %s: %s", filename, user_id, exc)
+            raise
+
+    def get_file_info(self, user_id: str, filename: str = "api_response_B.json") -> Dict[str, Any]:
+        """Compatibilidad retro: alias de get_user_file_info con filename por defecto."""
+        return self.get_user_file_info(user_id, filename)
     
     def list_metrics_files(self, user_id: str) -> list:
         """

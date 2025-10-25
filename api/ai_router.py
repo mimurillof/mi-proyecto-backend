@@ -6,7 +6,7 @@ AI Router - Endpoints para el agente financiero Horizon v3.0
 import os
 import tempfile
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, Depends
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, Depends, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -36,7 +36,8 @@ class ChatResponse(BaseModel):
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_agent(
     request: ChatRequest,
-    current_user: User = Depends(get_current_user)  # ✅ Requerir autenticación
+    current_user: User = Depends(get_current_user),  # ✅ Requerir autenticación
+    authorization: Optional[str] = Header(None)  # ✅ Obtener header Authorization
 ):
     """
     Endpoint principal para chat con el agente financiero
@@ -45,12 +46,18 @@ async def chat_with_agent(
     try:
         user_id = str(current_user.user_id)  # ✅ Obtener user_id del usuario autenticado
         
+        # Extraer token JWT del header Authorization
+        auth_token = None
+        if authorization and authorization.startswith("Bearer "):
+            auth_token = authorization.split(" ", 1)[1]
+        
         # Usar servicio remoto
         response_data = await remote_agent_client.process_message(
             message=request.message,
             user_id=user_id,  # ✅ Pasar user_id al agente
             file_path=request.file_path,
-            url=request.url
+            url=request.url,
+            auth_token=auth_token  # ✅ Pasar token JWT al agente
         )
         
         # Normalizar la respuesta para garantizar compatibilidad
@@ -76,7 +83,8 @@ async def chat_with_agent(
 async def chat_with_file(
     message: str = Form(..., description="Mensaje del usuario"),
     file: UploadFile = File(..., description="Archivo para análisis"),
-    current_user: User = Depends(get_current_user)  # ✅ Requerir autenticación
+    current_user: User = Depends(get_current_user),  # ✅ Requerir autenticación
+    authorization: Optional[str] = Header(None)  # ✅ Obtener header Authorization
 ):
     """
     Endpoint para chat con archivo adjunto
@@ -84,6 +92,11 @@ async def chat_with_file(
     """
     try:
         user_id = str(current_user.user_id)  # ✅ Obtener user_id del usuario autenticado
+        
+        # Extraer token JWT del header Authorization
+        auth_token = None
+        if authorization and authorization.startswith("Bearer "):
+            auth_token = authorization.split(" ", 1)[1]
         
         # Guardar archivo temporalmente
         with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as temp_file:
@@ -96,7 +109,8 @@ async def chat_with_file(
             response_data = await remote_agent_client.process_message(
                 message=message,
                 user_id=user_id,  # ✅ Pasar user_id al agente
-                file_path=temp_file_path
+                file_path=temp_file_path,
+                auth_token=auth_token  # ✅ Pasar token JWT al agente
             )
             
             # Normalizar la respuesta

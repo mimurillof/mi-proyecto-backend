@@ -63,12 +63,14 @@ class RemoteChatAgentClient:
         user_id: str,  # ✅ NUEVO: Requerido para multiusuario
         file_path: Optional[str] = None,
         url: Optional[str] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        auth_token: Optional[str] = None  # ✅ NUEVO: Token JWT para acceso a Supabase
     ) -> Dict[str, Any]:
         """Procesar un mensaje con el agente remoto"""
         payload = {
             "message": message,
-            "user_id": user_id  # ✅ Incluir user_id en el payload
+            "user_id": user_id,  # ✅ Incluir user_id en el payload
+            "auth_token": auth_token  # ✅ Incluir auth_token para acceso a archivos del usuario
         }
         
         if file_path:

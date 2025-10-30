@@ -12,6 +12,7 @@ from api.storage_router import router as storage_router
 from api.portfolio_manager_router import router as portfolio_manager_router
 from api.home_router import router as home_router
 from api.supabase_auth_router import router as supabase_auth_router
+from api.dashboard_router import router as dashboard_router
 from config import settings
 from services.portfolio_manager_service import (
     shutdown_portfolio_manager,
@@ -113,6 +114,12 @@ app.include_router(
 app.include_router(
     ribbon_router,
     tags=["Ribbon Actions"],
+)
+
+# Dashboard alerts and opportunities
+app.include_router(
+    dashboard_router,
+    tags=["Dashboard"],
 )
 
 if __name__ == "__main__":

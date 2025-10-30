@@ -1,10 +1,11 @@
 import json
 import logging
 import uuid
+import asyncio
 from datetime import datetime
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Request
 
 try:
     from config import settings  # type: ignore[attr-defined]
@@ -55,11 +56,173 @@ async def get_forecast():
     }
 
 
+@router.post("/alerts/start")
+async def start_alerts_analysis(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    background_tasks: BackgroundTasks = BackgroundTasks()
+):
+    """
+    Inicia el análisis asíncrono de alertas y oportunidades.
+    Retorna inmediatamente con un report_id para hacer polling.
+    """
+    user_id = str(current_user.user_id)
+    
+    # Obtener token del header Authorization
+    auth_token = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        auth_token = auth_header.split(" ", 1)[1]
+    
+    # Generar ID único para el reporte
+    report_id = str(uuid.uuid4())
+    
+    # Crear estado inicial
+    report_statuses[report_id] = {
+        "report_id": report_id,
+        "status": "pending",
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+    }
+    
+    # Iniciar procesamiento en background (llamada al agente)
+    background_tasks.add_task(
+        process_alerts_analysis,
+        report_id,
+        user_id,
+        auth_token
+    )
+    
+    return {
+        "report_id": report_id,
+        "status": "pending",
+        "message": "Análisis de alertas iniciado. Use el endpoint /api/ribbon/alerts/status/{report_id} para verificar el progreso.",
+        "poll_url": f"/api/ribbon/alerts/status/{report_id}",
+        "created_at": report_statuses[report_id]["created_at"]
+    }
+
+
+async def process_alerts_analysis(
+    report_id: str,
+    user_id: str,
+    auth_token: Optional[str] = None
+):
+    """
+    Función auxiliar que procesa el análisis de alertas en background.
+    Actualiza el estado en report_statuses.
+    """
+    try:
+        # Actualizar estado a "processing"
+        report_statuses[report_id]["status"] = "processing"
+        report_statuses[report_id]["updated_at"] = datetime.now().isoformat()
+        
+        # Iniciar análisis con el agente remoto
+        start_response = await remote_agent_client.start_alerts_analysis(
+            user_id=user_id,
+            auth_token=auth_token,
+            model_preference="pro",  # Usar modelo Pro para análisis profundo
+        )
+        
+        task_id = start_response.get("task_id")
+        if not task_id:
+            raise Exception("No se recibió task_id del chat agent")
+        
+        # Hacer polling hasta que complete
+        max_attempts = 60  # 60 intentos * 3 segundos = 3 minutos máximo
+        for attempt in range(max_attempts):
+            await asyncio.sleep(3)  # Esperar 3 segundos entre polls
+            
+            try:
+                status_response = await remote_agent_client.get_alerts_analysis_status(task_id)
+                
+                status = status_response.get("status")
+                
+                if status == "completed":
+                    # Análisis completado exitosamente
+                    result = status_response.get("result", {})
+                    report_statuses[report_id]["status"] = "completed"
+                    report_statuses[report_id]["result"] = result
+                    report_statuses[report_id]["updated_at"] = datetime.now().isoformat()
+                    report_statuses[report_id]["completed_at"] = datetime.now().isoformat()
+                    return
+                
+                elif status == "error":
+                    # Error en el análisis
+                    error_msg = status_response.get("error", "Error desconocido")
+                    report_statuses[report_id]["status"] = "error"
+                    report_statuses[report_id]["error"] = error_msg
+                    report_statuses[report_id]["updated_at"] = datetime.now().isoformat()
+                    return
+                
+                # Si está en "pending" o "processing", continuar polling
+                
+            except Exception as e:
+                # Si falla el polling, continuar intentando
+                if attempt == max_attempts - 1:
+                    report_statuses[report_id]["status"] = "error"
+                    report_statuses[report_id]["error"] = f"Timeout esperando resultado: {str(e)}"
+                    report_statuses[report_id]["updated_at"] = datetime.now().isoformat()
+                    return
+        
+        # Timeout después de todos los intentos
+        report_statuses[report_id]["status"] = "error"
+        report_statuses[report_id]["error"] = "Timeout: el análisis no se completó en el tiempo esperado"
+        report_statuses[report_id]["updated_at"] = datetime.now().isoformat()
+    
+    except Exception as e:
+        # Error inesperado
+        report_statuses[report_id]["status"] = "error"
+        report_statuses[report_id]["error"] = str(e)
+        report_statuses[report_id]["updated_at"] = datetime.now().isoformat()
+
+
+@router.get("/alerts/status/{report_id}")
+async def get_alerts_analysis_status(
+    report_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Obtiene el estado actual de un análisis de alertas.
+    Estados posibles: pending, processing, completed, error
+    """
+    if report_id not in report_statuses:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Análisis con ID {report_id} no encontrado"
+        )
+    
+    status_info = report_statuses[report_id]
+    
+    # Respuesta básica para todos los estados
+    response = {
+        "report_id": status_info["report_id"],
+        "status": status_info["status"],
+        "created_at": status_info["created_at"],
+        "updated_at": status_info["updated_at"],
+    }
+    
+    # Agregar información específica según el estado
+    if status_info["status"] == "completed":
+        result = status_info.get("result", {})
+        response["analysis"] = result.get("analysis", "")
+        response["model_used"] = result.get("model_used", "")
+        response["completed_at"] = status_info.get("completed_at")
+    elif status_info["status"] == "error":
+        response["error"] = status_info.get("error")
+    elif status_info["status"] in ["pending", "processing"]:
+        response["message"] = "Análisis en proceso. Vuelva a consultar en unos segundos."
+    
+    return response
+
+
 @router.get("/alerts")
 async def get_alerts():
+    """
+    Endpoint legacy - ahora se usa /alerts/start para iniciar el análisis
+    """
     return {
         "title": "Alertas y Oportunidades",
-        "message": "Alerta de ejemplo: oportunidad detectada (mensaje de prueba)."
+        "message": "Use el endpoint POST /api/ribbon/alerts/start para iniciar el análisis."
     }
 
 

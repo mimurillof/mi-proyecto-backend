@@ -113,20 +113,35 @@ async def get_projections_status(
     Consulta el estado del análisis de proyecciones futuras.
     """
     try:
+        logger.info(f"📊 Consultando estado de proyecciones: task_id={task_id}")
         result = await remote_agent_client.get_future_projections_status(task_id)
         
-        if result.get("error"):
+        # Verificar que el resultado sea un diccionario
+        if not isinstance(result, dict):
+            logger.error(f"❌ Respuesta del agente no es un diccionario: {type(result)}")
             raise HTTPException(
                 status_code=500,
-                detail=result.get("error")
+                detail=f"Respuesta inválida del agente: tipo {type(result)}"
             )
         
+        logger.info(f"✅ Respuesta recibida del agente: status={result.get('status', 'unknown')}")
+        
+        # Verificar si hay error en la respuesta
+        if result.get("error"):
+            error_msg = result.get("error", "Error desconocido")
+            logger.error(f"❌ Error en respuesta del agente: {error_msg}")
+            raise HTTPException(
+                status_code=500,
+                detail=error_msg
+            )
+        
+        # Devolver resultado directamente
         return result
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error consultando estado de proyecciones: {str(e)}")
+        logger.error(f"❌ Error consultando estado de proyecciones: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error interno: {str(e)}"

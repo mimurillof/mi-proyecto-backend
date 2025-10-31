@@ -35,7 +35,14 @@ class RemoteChatAgentClient:
                         **kwargs
                     )
                     response.raise_for_status()
-                    return response.json()
+                    
+                    # Intentar parsear JSON
+                    try:
+                        return response.json()
+                    except Exception as json_error:
+                        # Si falla el parseo JSON, devolver el texto como error
+                        text_content = response.text[:500]  # Limitar a 500 caracteres
+                        raise Exception(f"Error parseando JSON: {str(json_error)}. Respuesta: {text_content}")
             
             except httpx.TimeoutException:
                 if attempt == self.retries:

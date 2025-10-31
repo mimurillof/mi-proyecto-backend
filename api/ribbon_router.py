@@ -48,6 +48,91 @@ async def get_performance():
     }
 
 
+@router.post("/projections/start")
+async def start_projections_analysis(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Inicia el análisis asíncrono de proyecciones futuras.
+    Retorna inmediatamente con un task_id para hacer polling.
+    """
+    user_id = str(current_user.user_id)
+    
+    # Obtener token del header Authorization
+    auth_token = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        auth_token = auth_header.split(" ", 1)[1]
+    
+    try:
+        # Llamar al agente remoto
+        result = await remote_agent_client.start_future_projections(
+            user_id=user_id,
+            auth_token=auth_token,
+            model_preference="flash"
+        )
+        
+        if result.get("error"):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error iniciando proyecciones: {result.get('error')}"
+            )
+        
+        task_id = result.get("task_id")
+        if not task_id:
+            raise HTTPException(
+                status_code=500,
+                detail="No se recibió task_id del servicio de agente"
+            )
+        
+        logger.info(f"✅ Proyecciones futuras iniciadas para user={user_id}, task_id={task_id}")
+        
+        return {
+            "task_id": task_id,
+            "status": "pending",
+            "message": "Análisis de proyecciones iniciado exitosamente"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error iniciando proyecciones: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno: {str(e)}"
+        )
+
+
+@router.get("/projections/status/{task_id}")
+async def get_projections_status(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Consulta el estado del análisis de proyecciones futuras.
+    """
+    try:
+        result = await remote_agent_client.get_future_projections_status(task_id)
+        
+        if result.get("error"):
+            raise HTTPException(
+                status_code=500,
+                detail=result.get("error")
+            )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error consultando estado de proyecciones: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno: {str(e)}"
+        )
+
+
 @router.get("/forecast")
 async def get_forecast():
     return {

@@ -42,9 +42,13 @@ async def get_summary():
 
 @router.get("/performance")
 async def get_performance():
+    """
+    Endpoint legacy. Redirige al nuevo flujo asíncrono.
+    Mantenido por compatibilidad pero debería usar /performance/start
+    """
     return {
         "title": "Análisis de Rendimiento",
-        "message": "Mensaje de prueba de rendimiento enviado por el backend."
+        "message": "Este endpoint está deprecado. Use /api/ribbon/performance/start para iniciar el análisis."
     }
 
 
@@ -142,6 +146,100 @@ async def get_projections_status(
         raise
     except Exception as e:
         logger.error(f"❌ Error consultando estado de proyecciones: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno: {str(e)}"
+        )
+
+
+@router.post("/performance/start")
+async def start_performance_analysis(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Inicia el análisis asíncrono de rendimiento del portafolio.
+    Retorna inmediatamente con un task_id para hacer polling.
+    """
+    user_id = str(current_user.user_id)
+    auth_token = None
+    
+    # Extraer token de autorización del header
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        auth_token = auth_header.split(" ", 1)[1]
+    
+    try:
+        result = await remote_agent_client.start_performance_analysis(
+            user_id=user_id,
+            auth_token=auth_token,
+            model_preference="flash"
+        )
+        
+        if result.get("error"):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error iniciando análisis de rendimiento: {result.get('error')}"
+            )
+        
+        task_id = result.get("task_id")
+        if not task_id:
+            raise HTTPException(
+                status_code=500,
+                detail="No se recibió task_id del servicio de agente"
+            )
+        
+        logger.info(f"✅ Análisis de rendimiento iniciado para user={user_id}, task_id={task_id}")
+        
+        return {
+            "task_id": task_id,
+            "status": "pending",
+            "message": "Análisis de rendimiento iniciado exitosamente"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error iniciando análisis de rendimiento: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno: {str(e)}"
+        )
+
+
+@router.get("/performance/status/{task_id}")
+async def get_performance_status(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Obtiene el estado actual de un análisis de rendimiento.
+    """
+    try:
+        logger.info(f"📊 Consultando estado de análisis de rendimiento: task_id={task_id}")
+        result = await remote_agent_client.get_performance_analysis_status(task_id)
+        
+        if not isinstance(result, dict):
+            logger.error(f"❌ Respuesta del agente no es un diccionario: {type(result)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Respuesta inválida del agente: tipo {type(result)}"
+            )
+        
+        logger.info(f"✅ Respuesta recibida del agente: status={result.get('status', 'unknown')}")
+        
+        if result.get("error"):
+            error_msg = result.get("error", "Error desconocido")
+            logger.error(f"❌ Error en respuesta del agente: {error_msg}")
+            raise HTTPException(
+                status_code=500,
+                detail=error_msg
+            )
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error consultando estado de análisis de rendimiento: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error interno: {str(e)}"

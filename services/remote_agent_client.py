@@ -342,6 +342,53 @@ class RemoteChatAgentClient:
             f"/acciones/proyecciones_futuras/status/{task_id}",
             timeout=10.0,
         )
+    
+    async def start_performance_analysis(
+        self,
+        user_id: str,
+        auth_token: Optional[str] = None,
+        model_preference: Optional[str] = None,
+        session_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Inicia el análisis asíncrono de rendimiento del portafolio.
+        Retorna un task_id para hacer polling.
+        """
+        payload: Dict[str, Any] = {
+            "user_id": user_id,
+        }
+        
+        if model_preference:
+            payload["model_preference"] = model_preference
+        if session_id:
+            payload["session_id"] = session_id
+        if auth_token:
+            payload["auth_token"] = auth_token
+        
+        headers = {}
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+        
+        return await self._make_request(
+            "POST",
+            "/acciones/analisis_rendimiento/start",
+            json=payload,
+            headers=headers,
+            timeout=10.0,
+        )
+    
+    async def get_performance_analysis_status(
+        self,
+        task_id: str
+    ) -> Dict[str, Any]:
+        """
+        Obtiene el estado del análisis de rendimiento.
+        """
+        return await self._make_request(
+            "GET",
+            f"/acciones/analisis_rendimiento/status/{task_id}",
+            timeout=10.0,
+        )
 
 # Instancia global del cliente
 remote_agent_client = RemoteChatAgentClient()

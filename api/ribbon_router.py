@@ -34,9 +34,13 @@ report_statuses: Dict[str, Dict[str, Any]] = {}
 
 @router.get("/summary")
 async def get_summary():
+    """
+    Endpoint legacy. Redirige al nuevo flujo asíncrono.
+    Mantenido por compatibilidad pero debería usar /summary/start
+    """
     return {
         "title": "Resumen Diario/Semanal",
-        "message": "Este es un mensaje de prueba desde el backend para el resumen."
+        "message": "Este endpoint está deprecado. Use /api/ribbon/summary/start para iniciar el resumen."
     }
 
 
@@ -240,6 +244,100 @@ async def get_performance_status(
         raise
     except Exception as e:
         logger.error(f"❌ Error consultando estado de análisis de rendimiento: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno: {str(e)}"
+        )
+
+
+@router.post("/summary/start")
+async def start_summary_analysis(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Inicia el análisis asíncrono de resumen diario/semanal del portafolio.
+    Retorna inmediatamente con un task_id para hacer polling.
+    """
+    user_id = str(current_user.user_id)
+    auth_token = None
+    
+    # Extraer token de autorización del header
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        auth_token = auth_header.split(" ", 1)[1]
+    
+    try:
+        result = await remote_agent_client.start_daily_weekly_summary(
+            user_id=user_id,
+            auth_token=auth_token,
+            model_preference="flash"
+        )
+        
+        if result.get("error"):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error iniciando resumen diario/semanal: {result.get('error')}"
+            )
+        
+        task_id = result.get("task_id")
+        if not task_id:
+            raise HTTPException(
+                status_code=500,
+                detail="No se recibió task_id del servicio de agente"
+            )
+        
+        logger.info(f"✅ Resumen diario/semanal iniciado para user={user_id}, task_id={task_id}")
+        
+        return {
+            "task_id": task_id,
+            "status": "pending",
+            "message": "Resumen diario/semanal iniciado exitosamente"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error iniciando resumen diario/semanal: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno: {str(e)}"
+        )
+
+
+@router.get("/summary/status/{task_id}")
+async def get_summary_status(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Obtiene el estado actual de un análisis de resumen diario/semanal.
+    """
+    try:
+        logger.info(f"📊 Consultando estado de resumen diario/semanal: task_id={task_id}")
+        result = await remote_agent_client.get_daily_weekly_summary_status(task_id)
+        
+        if not isinstance(result, dict):
+            logger.error(f"❌ Respuesta del agente no es un diccionario: {type(result)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Respuesta inválida del agente: tipo {type(result)}"
+            )
+        
+        logger.info(f"✅ Respuesta recibida del agente: status={result.get('status', 'unknown')}")
+        
+        if result.get("error"):
+            error_msg = result.get("error", "Error desconocido")
+            logger.error(f"❌ Error en respuesta del agente: {error_msg}")
+            raise HTTPException(
+                status_code=500,
+                detail=error_msg
+            )
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error consultando estado de resumen diario/semanal: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error interno: {str(e)}"

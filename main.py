@@ -13,6 +13,8 @@ from api.portfolio_manager_router import router as portfolio_manager_router
 from api.home_router import router as home_router
 from api.supabase_auth_router import router as supabase_auth_router
 from api.dashboard_router import router as dashboard_router
+from api.yahoo_router import router as yahoo_router
+from api.assets_router import router as assets_router
 from config import settings
 from services.portfolio_manager_service import (
     shutdown_portfolio_manager,
@@ -120,6 +122,18 @@ app.include_router(
 app.include_router(
     dashboard_router,
     tags=["Dashboard"],
+)
+
+# Yahoo Finance search endpoints
+app.include_router(
+    yahoo_router,
+    tags=["Yahoo Finance"],
+)
+
+# Portfolio Assets management
+app.include_router(
+    assets_router,
+    tags=["Portfolio Assets"],
 )
 
 if __name__ == "__main__":

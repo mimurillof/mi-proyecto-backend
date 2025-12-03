@@ -17,7 +17,8 @@ class User(Base):
     """
     Modelo adaptado a la tabla 'users' existente en Supabase.
     Campos: user_id (UUID), email, password_hash, first_name, last_name, 
-            birth_date, gender, created_at, has_completed_onboarding
+            birth_date, gender, created_at, has_completed_onboarding,
+            mobile, country, identification_number, bio, profile_image_path
     """
     __tablename__ = "users"
     
@@ -32,4 +33,11 @@ class User(Base):
     gender = Column(Enum(GenderEnum, name='gender_enum'), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     has_completed_onboarding = Column(Boolean, default=False)
+    
+    # Campos adicionales para perfil completo
+    mobile = Column(String(20), nullable=True)  # Número de teléfono móvil
+    country = Column(String(100), nullable=True)  # País
+    identification_number = Column(String(50), nullable=True)  # Número de identificación (cédula, DNI, etc.)
+    bio = Column(Text, nullable=True)  # Acerca de mí / Biografía
+    profile_image_path = Column(String(500), nullable=True)  # Path de la imagen en Supabase Storage
  

@@ -8,7 +8,9 @@ from models.schemas import (
     APIResponse, 
     UserProfileResponse, 
     UserProfileUpdate,
-    UserAvatarResponse
+    UserAvatarResponse,
+    PasswordChange,
+    PasswordChangeResponse
 )
 from auth.dependencies import get_current_user
 from db_models.models import User
@@ -62,6 +64,9 @@ async def get_user_profile(
         identification_number=current_user.identification_number,
         bio=current_user.bio,
         profile_image_url=profile_image_url,
+        tax_id_number=current_user.tax_id_number,
+        tax_id_country=current_user.tax_id_country,
+        residential_address=current_user.residential_address,
         created_at=current_user.created_at,
         has_completed_onboarding=current_user.has_completed_onboarding or False
     )
@@ -117,6 +122,9 @@ async def update_user_profile(
         identification_number=updated_user.identification_number,
         bio=updated_user.bio,
         profile_image_url=profile_image_url,
+        tax_id_number=updated_user.tax_id_number,
+        tax_id_country=updated_user.tax_id_country,
+        residential_address=updated_user.residential_address,
         created_at=updated_user.created_at,
         has_completed_onboarding=updated_user.has_completed_onboarding or False
     )
@@ -252,4 +260,52 @@ async def complete_onboarding(
     return APIResponse(
         success=True,
         message="Onboarding completado correctamente"
+    )
+
+
+@router.post("/change-password", response_model=PasswordChangeResponse)
+async def change_password(
+    password_data: PasswordChange,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Cambia la contraseña del usuario autenticado.
+    
+    Requiere:
+    - current_password: Contraseña actual
+    - new_password: Nueva contraseña (mínimo 8 caracteres)
+    - confirm_password: Confirmación de nueva contraseña
+    """
+    # Validar que las contraseñas nuevas coincidan
+    if password_data.new_password != password_data.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las contraseñas nuevas no coinciden"
+        )
+    
+    # Validar que la nueva contraseña sea diferente a la actual
+    if password_data.current_password == password_data.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La nueva contraseña debe ser diferente a la actual"
+        )
+    
+    # Intentar cambiar contraseña
+    result = await user_crud.change_password(
+        db=db,
+        user_id=current_user.user_id,
+        current_password=password_data.current_password,
+        new_password=password_data.new_password
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("message", "Error al cambiar contraseña")
+        )
+    
+    return PasswordChangeResponse(
+        success=True,
+        message="Contraseña actualizada correctamente"
     ) 

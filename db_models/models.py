@@ -40,4 +40,9 @@ class User(Base):
     identification_number = Column(String(50), nullable=True)  # Número de identificación (cédula, DNI, etc.)
     bio = Column(Text, nullable=True)  # Acerca de mí / Biografía
     profile_image_path = Column(String(500), nullable=True)  # Path de la imagen en Supabase Storage
+    
+    # Campos adicionales para configuración de cuenta
+    tax_id_number = Column(String(50), nullable=True)  # Número de identificación fiscal
+    tax_id_country = Column(String(100), nullable=True)  # País de identificación fiscal
+    residential_address = Column(Text, nullable=True)  # Dirección residencial
  

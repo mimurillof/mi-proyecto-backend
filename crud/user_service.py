@@ -141,6 +141,45 @@ class UserCRUD:
         await db.refresh(user)
         
         return user
+    
+    async def change_password(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        current_password: str,
+        new_password: str
+    ) -> Dict[str, Any]:
+        """
+        Cambia la contraseña del usuario.
+        
+        Args:
+            db: Sesión de base de datos
+            user_id: UUID del usuario
+            current_password: Contraseña actual
+            new_password: Nueva contraseña
+            
+        Returns:
+            Dict con success y message
+        """
+        user = await self.get_user_by_id(db, user_id)
+        if not user:
+            return {"success": False, "message": "Usuario no encontrado"}
+        
+        # Verificar contraseña actual
+        if not verify_password(current_password, str(user.password_hash)):
+            return {"success": False, "message": "La contraseña actual es incorrecta"}
+        
+        # Hashear y actualizar nueva contraseña
+        new_hash = get_password_hash(new_password)
+        
+        await db.execute(
+            update(User)
+            .where(User.user_id == user_id)
+            .values(password_hash=new_hash)
+        )
+        await db.commit()
+        
+        return {"success": True, "message": "Contraseña actualizada correctamente"}
 
 # Create instance
 user_crud = UserCRUD()

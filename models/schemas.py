@@ -47,6 +47,9 @@ class UserProfileResponse(BaseModel):
     identification_number: Optional[str] = None
     bio: Optional[str] = None
     profile_image_url: Optional[str] = None  # URL firmada de Supabase Storage
+    tax_id_number: Optional[str] = None  # Número de identificación fiscal
+    tax_id_country: Optional[str] = None  # País de identificación fiscal
+    residential_address: Optional[str] = None  # Dirección residencial
     created_at: datetime
     has_completed_onboarding: bool = False
     
@@ -63,6 +66,9 @@ class UserProfileUpdate(BaseModel):
     country: Optional[str] = Field(None, max_length=100)
     identification_number: Optional[str] = Field(None, max_length=50)
     bio: Optional[str] = Field(None, max_length=1000)
+    tax_id_number: Optional[str] = Field(None, max_length=50)
+    tax_id_country: Optional[str] = Field(None, max_length=100)
+    residential_address: Optional[str] = Field(None, max_length=500)
 
 class UserAvatarResponse(BaseModel):
     """Schema para respuesta de avatar/imagen de perfil"""
@@ -92,3 +98,18 @@ class APIResponse(BaseModel):
     success: bool
     message: str
     data: Optional[dict] = None
+
+# ============================================================
+# Schemas para cambio de contraseña
+# ============================================================
+
+class PasswordChange(BaseModel):
+    """Schema para cambiar contraseña"""
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
+
+class PasswordChangeResponse(BaseModel):
+    """Schema de respuesta para cambio de contraseña"""
+    success: bool
+    message: str

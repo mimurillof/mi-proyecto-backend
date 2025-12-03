@@ -5,10 +5,11 @@ AI Router - Endpoints para el agente financiero Horizon v3.0
 
 import os
 import tempfile
+import base64
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, Depends, Header
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import json
 
 from config import settings
@@ -19,11 +20,20 @@ from db_models.models import User  # ✅ Importar modelo de Usuario
 
 router = APIRouter()
 
+
 # Modelos para requests/responses
+class InlineFile(BaseModel):
+    """Modelo para archivo inline (base64)"""
+    filename: str = Field(..., description="Nombre del archivo")
+    content_type: str = Field(..., description="MIME type del archivo (e.g., 'application/pdf', 'image/png')")
+    data: str = Field(..., description="Contenido del archivo codificado en base64")
+
+
 class ChatRequest(BaseModel):
     message: str
     file_path: Optional[str] = None
     url: Optional[str] = None
+    files: Optional[List[InlineFile]] = Field(None, description="Lista de archivos inline (base64) para análisis multimodal")
 
 class ChatResponse(BaseModel):
     response: str
@@ -43,6 +53,7 @@ async def chat_with_agent(
     """
     Endpoint principal para chat con el agente financiero (con streaming SSE)
     Requiere autenticación - el agente accederá solo a los archivos del usuario
+    Soporta archivos inline (PDF, imágenes) para análisis multimodal
     """
     try:
         user_id = str(current_user.user_id)  # ✅ Obtener user_id del usuario autenticado
@@ -52,6 +63,18 @@ async def chat_with_agent(
         if authorization and authorization.startswith("Bearer "):
             auth_token = authorization.split(" ", 1)[1]
         
+        # ✅ Preparar archivos inline si existen
+        inline_files = None
+        if request.files:
+            inline_files = [
+                {
+                    "filename": f.filename,
+                    "content_type": f.content_type,
+                    "data": f.data
+                }
+                for f in request.files
+            ]
+        
         async def event_generator():
             """Genera eventos SSE desde el agent"""
             try:
@@ -60,7 +83,8 @@ async def chat_with_agent(
                     user_id=user_id,
                     file_path=request.file_path,
                     url=request.url,
-                    auth_token=auth_token
+                    auth_token=auth_token,
+                    inline_files=inline_files  # ✅ Pasar archivos inline
                 ):
                     # Reenviar chunks SSE al frontend
                     yield f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n"

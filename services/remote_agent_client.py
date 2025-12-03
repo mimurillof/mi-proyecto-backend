@@ -97,10 +97,12 @@ class RemoteChatAgentClient:
         file_path: Optional[str] = None,
         url: Optional[str] = None,
         session_id: Optional[str] = None,
-        auth_token: Optional[str] = None
+        auth_token: Optional[str] = None,
+        inline_files: Optional[List[Dict[str, str]]] = None  # ✅ Nuevo: archivos inline
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Procesar un mensaje con streaming SSE.
+        Soporta archivos inline (PDF, imágenes) para análisis multimodal.
         Yields: dict con chunks de texto o metadata final
         """
         payload = {
@@ -115,6 +117,10 @@ class RemoteChatAgentClient:
             payload["url"] = url
         if session_id:
             payload["session_id"] = session_id
+        
+        # ✅ Agregar archivos inline si existen
+        if inline_files:
+            payload["files"] = inline_files
         
         # Usar streaming con httpx
         async with httpx.AsyncClient(timeout=300.0) as client:  # 5 min timeout total

@@ -799,3 +799,113 @@ async def list_available_charts(current_user: User = Depends(get_current_user)):
         logger.error(f"Error al listar grÃ¡ficos en Supabase para usuario {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ===== ENDPOINT PARA MÉTRICAS AVANZADAS =====
+
+@router.get("/api/portfolio/advanced-metrics")
+async def get_advanced_metrics(current_user: User = Depends(get_current_user)):
+    """
+    Endpoint para obtener las métricas avanzadas del portfolio desde Supabase Storage.
+    
+    Lee la sección 'analizer_info' del archivo api_response_B.json del usuario
+    para el componente de Métricas Avanzadas del frontend.
+    
+    Requiere autenticación mediante token JWT.
+    """
+    user_id = str(current_user.user_id)
+    
+    try:
+        # Verificar si Supabase está habilitado
+        if not SUPABASE_ENABLED or not supabase_storage:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de Supabase Storage no está disponible"
+            )
+        
+        # Leer el archivo api_response_B.json del usuario
+        data = await supabase_storage.read_metrics_json(user_id, "api_response_B.json")
+        
+        # Extraer la sección analizer_info directamente
+        analizer_info = data.get("analizer_info", {})
+        
+        # Fallbacks desde otras secciones si analizer_info no existe
+        performance_metrics = data.get("performance_metrics", {})
+        correlations = data.get("correlations", {})
+        
+        # Tracking Error - campo: tracking_error
+        tracking_error_data = analizer_info.get("tracking_error", {})
+        tracking_error_value = tracking_error_data.get("value", performance_metrics.get("annualized_volatility", 0) * 100)
+        tracking_error_benchmark = tracking_error_data.get("vs_benchmark", 1.50)
+        tracking_error_label = tracking_error_data.get("label", "Tracking Error")
+        
+        # CVaR 95% 1 mes - campo: cvar_95_1m
+        cvar_data = analizer_info.get("cvar_95_1m", {})
+        cvar_value = cvar_data.get("value", 0)
+        cvar_period = cvar_data.get("period", "1 mes")
+        cvar_label = cvar_data.get("label", "CVaR (95%, 1 mes)")
+        
+        # Sharpe Ratio - campo: sharpe_ratio
+        sharpe_data = analizer_info.get("sharpe_ratio", {})
+        sharpe_value = sharpe_data.get("value", performance_metrics.get("sharpe_ratio", 0))
+        sharpe_peer_group = sharpe_data.get("vs_peer_group", 0.68)
+        sharpe_label = sharpe_data.get("label", "Ratio de Sharpe")
+        
+        # Correlación MSCI World - campo: correlation_msci_world
+        correlation_data = analizer_info.get("correlation_msci_world", {})
+        correlation_value = correlation_data.get("value", correlations.get("summary", {}).get("avg_correlation", 0.85))
+        correlation_benchmark = correlation_data.get("benchmark", "MSCI World")
+        correlation_label = correlation_data.get("label", "Correlación (MSCI World)")
+        
+        # Factor Exposure Value - campo: factor_exposure_value
+        factor_data = analizer_info.get("factor_exposure_value", {})
+        factor_value = factor_data.get("value", 0.15)
+        factor_deviation = factor_data.get("deviation_vs_benchmark", factor_value)
+        factor_label = factor_data.get("label", "Exposición Factor 'Value'")
+        
+        # Construir respuesta con la estructura esperada por el frontend
+        advanced_metrics = {
+            "tracking_error": {
+                "value": round(tracking_error_value, 2) if tracking_error_value is not None else 0,
+                "benchmark": round(tracking_error_benchmark, 2) if tracking_error_benchmark is not None else 1.50,
+                "label": tracking_error_label,
+                "unit": "%"
+            },
+            "cvar_95": {
+                "value": round(cvar_value, 2) if cvar_value is not None else 0,
+                "period": cvar_period,
+                "label": cvar_label,
+                "unit": "%"
+            },
+            "sharpe_ratio": {
+                "value": round(sharpe_value, 2) if sharpe_value is not None else 0,
+                "peer_group": round(sharpe_peer_group, 2) if sharpe_peer_group is not None else 0.68,
+                "label": sharpe_label,
+                "unit": ""
+            },
+            "correlation_msci": {
+                "value": round(correlation_value, 2) if correlation_value is not None else 0,
+                "benchmark": correlation_benchmark,
+                "label": correlation_label,
+                "unit": ""
+            },
+            "value_factor_exposure": {
+                "value": round(factor_value, 2) if factor_value is not None else 0,
+                "benchmark_deviation": round(factor_deviation, 2) if factor_deviation is not None else 0,
+                "label": factor_label,
+                "unit": ""
+            },
+            "source": "supabase_storage",
+            "user_id": user_id,
+            "retrieved_at": datetime.now().isoformat()
+        }
+        
+        logger.info(f"Métricas avanzadas servidas exitosamente para usuario {user_id}")
+        return advanced_metrics
+        
+    except Exception as e:
+        logger.error(f"Error al obtener métricas avanzadas para usuario {user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener métricas avanzadas: {str(e)}"
+        )
+

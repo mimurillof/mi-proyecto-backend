@@ -152,16 +152,18 @@ def build_tradingview_cards(items: List[Dict[str, Any]]) -> Tuple[List[Dict[str,
 
     for index, entry in enumerate(sorted_items):
         published_at = parse_datetime(entry.get("published_at"))
+        source_name = entry.get("source") or "Noticias"
+        ticker = entry.get("ticker", "Mercado")
         base_card = {
             "id": entry.get("id"),
             "type": "tradingview",
-            "badge": f"TradingView • {entry.get('ticker', 'Mercado')}",
+            "badge": f"{source_name} • {ticker}",
             "title": entry.get("title") or "Idea destacada",
             "description": entry.get("author"),
             "image_url": entry.get("image_url"),
             "url": entry.get("idea_url") or entry.get("source_url"),
             "published_at": entry.get("published_at"),
-            "cta_label": "Ver idea" if entry.get("idea_url") or entry.get("source_url") else None,
+            "cta_label": "Leer artículo" if entry.get("idea_url") or entry.get("source_url") else None,
         }
 
         if index < 2:

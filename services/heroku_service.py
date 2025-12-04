@@ -54,14 +54,14 @@ class HerokuService:
         
         logger.info("HerokuService inicializado - Enabled: %s, Apps: %s", self.enabled, self.apps)
 
-    async def trigger_dyno(self, app_id_or_name: str, command: str, size: str = "basic") -> Dict[str, Any]:
+    async def trigger_dyno(self, app_id_or_name: str, command: str, size: str = "eco") -> Dict[str, Any]:
         """
         Triggers a one-off dyno on Heroku.
         
         Args:
             app_id_or_name: The name or ID of the Heroku app.
             command: The command to run (e.g., "python orchestrator.py").
-            size: Dyno size (default: "basic").
+            size: Dyno size (default: "eco" for Eco tier apps).
             
         Returns:
             JSON response from Heroku API.

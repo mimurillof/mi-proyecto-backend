@@ -1,10 +1,32 @@
 import httpx
 import logging
 import asyncio
+import re
 from typing import Optional, Dict, Any
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+def extract_app_name(url_or_name: str) -> str:
+    """
+    Extrae el nombre de la app de Heroku de una URL o retorna el nombre si ya es solo el nombre.
+    
+    Ejemplos:
+        - "https://my-app-123.herokuapp.com/" -> "my-app-123"
+        - "https://my-app-123.herokuapp.com" -> "my-app-123"
+        - "my-app-123" -> "my-app-123"
+    """
+    if not url_or_name:
+        return ""
+    
+    # Si es una URL de Heroku, extraer el nombre de la app
+    match = re.match(r'https?://([^.]+)\.herokuapp\.com/?', url_or_name)
+    if match:
+        return match.group(1)
+    
+    # Si ya es solo el nombre, retornarlo limpio
+    return url_or_name.strip().rstrip('/')
+
 
 class HerokuService:
     """
@@ -23,12 +45,11 @@ class HerokuService:
             "Content-Type": "application/json"
         }
         
-        # Nombres de las apps desde configuración
-        # IMPORTANTE: Actualiza estos valores en tu .env o config con los nombres correctos de tus apps
+        # Extraer nombres de apps desde configuración (pueden ser URLs o nombres)
         self.apps = {
-            "home": settings.HEROKU_APP_HOME,
-            "portfolio": settings.HEROKU_APP_PORTFOLIO,
-            "reports": settings.HEROKU_APP_REPORTS
+            "home": extract_app_name(settings.HEROKU_APP_HOME),
+            "portfolio": extract_app_name(settings.HEROKU_APP_PORTFOLIO),
+            "reports": extract_app_name(settings.HEROKU_APP_REPORTS)
         }
         
         logger.info("HerokuService inicializado - Enabled: %s, Apps: %s", self.enabled, self.apps)

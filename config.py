@@ -63,6 +63,12 @@ class Settings(BaseSettings):
 
     # Heroku Settings
     HEROKU_API_KEY: Optional[str] = None
+    HEROKU_ONDEMAND_ENABLED: bool = True  # Flag para habilitar/deshabilitar triggers
+    
+    # Nombres de las apps de Heroku (actualizar con los nombres correctos)
+    HEROKU_APP_HOME: str = "home-manager-horizon-61a90a214399"
+    HEROKU_APP_PORTFOLIO: str = "portofolio-manager-horizon-8aab12e4e690"
+    HEROKU_APP_REPORTS: str = "horizon-financial-gafics-be44ac1b7792"
 
     # Portfolio Manager Service
     PORTFOLIO_MANAGER_ENABLED: bool = True

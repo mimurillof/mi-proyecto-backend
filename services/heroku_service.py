@@ -16,19 +16,22 @@ class HerokuService:
     
     def __init__(self):
         self.api_key = settings.HEROKU_API_KEY
+        self.enabled = settings.HEROKU_ONDEMAND_ENABLED
         self.headers = {
             "Accept": "application/vnd.heroku+json; version=3",
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
         
-        # Mapping of app names/ids
-        # These could be moved to config if they change often, but for now we keep them here or use config if available
+        # Nombres de las apps desde configuración
+        # IMPORTANTE: Actualiza estos valores en tu .env o config con los nombres correctos de tus apps
         self.apps = {
-            "home": "home-manager-horizon-61a90a214399",
-            "portfolio": "portofolio-manager-horizon-8aab12e4e690",
-            "reports": "horizon-financial-gafics-be44ac1b7792"
+            "home": settings.HEROKU_APP_HOME,
+            "portfolio": settings.HEROKU_APP_PORTFOLIO,
+            "reports": settings.HEROKU_APP_REPORTS
         }
+        
+        logger.info("HerokuService inicializado - Enabled: %s, Apps: %s", self.enabled, self.apps)
 
     async def trigger_dyno(self, app_id_or_name: str, command: str, size: str = "basic") -> Dict[str, Any]:
         """
@@ -42,6 +45,10 @@ class HerokuService:
         Returns:
             JSON response from Heroku API.
         """
+        if not self.enabled:
+            logger.info("Heroku on-demand está deshabilitado. Skipping trigger para %s", app_id_or_name)
+            return {"status": "skipped", "reason": "disabled"}
+            
         if not self.api_key:
             logger.warning("HEROKU_API_KEY not set. Skipping dyno trigger for %s", app_id_or_name)
             return {"status": "skipped", "reason": "missing_api_key"}

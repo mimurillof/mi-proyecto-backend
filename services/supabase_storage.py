@@ -174,6 +174,78 @@ class SupabaseStorageService:
             "path": storage_path,
         }
 
+    def save_portfolio_report_json_custom(self, user_id: str, datos_informe: Dict[str, Any], filename: str) -> Dict[str, str]:
+        """Guarda o actualiza un archivo JSON en Supabase Storage con nombre personalizado.
+
+        Args:
+            user_id: ID del usuario propietario del informe
+            datos_informe: Diccionario con los datos a guardar.
+            filename: Nombre del archivo a guardar.
+
+        Returns:
+            dict: Resultado de la operación, indicando éxito o error.
+        """
+        if not isinstance(datos_informe, dict):
+            logger.error("Los datos recibidos no son un diccionario válido")
+            return {
+                "status": "error",
+                "message": "El parámetro 'datos_informe' debe ser un diccionario.",
+            }
+
+        try:
+            payload = json.dumps(datos_informe, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            logger.exception("No se pudo serializar los datos a JSON")
+            return {
+                "status": "error",
+                "message": f"No se pudo serializar los datos a JSON: {exc}",
+            }
+
+        storage_path = self.get_report_file_path(user_id, filename)
+        base_url = (self.supabase_url or "").rstrip("/")
+        if not base_url:
+            logger.error("SUPABASE_URL no está configurado correctamente para la carga REST")
+            return {
+                "status": "error",
+                "message": "SUPABASE_URL no está configurado para la carga REST.",
+            }
+
+        object_path = quote(storage_path, safe="")
+        upload_url = f"{base_url}/storage/v1/object/{self.bucket_name}/{object_path}"
+        headers = {
+            "Authorization": f"Bearer {self.supabase_service_role}",
+            "apikey": self.supabase_service_role,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+        try:
+            response = httpx.put(upload_url, content=payload, headers=headers, timeout=30.0)
+        except Exception as exc:
+            logger.exception("Error al realizar la petición PUT a Supabase Storage")
+            return {
+                "status": "error",
+                "message": f"Error al subir los datos a Supabase: {exc}",
+            }
+
+        if response.status_code not in (200, 201):
+            logger.error(
+                "Supabase devolvió un código inesperado (%s): %s",
+                response.status_code,
+                response.text,
+            )
+            return {
+                "status": "error",
+                "message": f"Supabase devolvió un error durante la carga: {response.status_code} {response.text}",
+            }
+
+        logger.info("Archivo JSON guardado en Supabase mediante REST: %s", storage_path)
+        return {
+            "status": "success",
+            "message": f"El archivo {filename} ha sido guardado correctamente en Supabase.",
+            "path": storage_path,
+        }
+
     def read_report_json(self, user_id: str, filename: str = REPORT_FILENAME) -> Dict[str, Any]:
         """Lee un archivo JSON de informes desde Supabase Storage.
         

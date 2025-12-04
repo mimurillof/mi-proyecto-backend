@@ -69,7 +69,7 @@ async def get_portfolio_report(
 async def get_portfolio_summary(
     current_user: User = Depends(get_current_user),
 ):
-    """Resumen rÃ¡pido del portafolio del usuario autenticado."""
+    """Resumen rápido del portafolio del usuario autenticado."""
     user_id = str(current_user.user_id)
     logger.info("Solicitando resumen de portfolio para user_id=%s", user_id)
     
@@ -79,7 +79,17 @@ async def get_portfolio_summary(
         return JSONResponse(status_code=200, content=summary_data)
 
     if not summary_data.get("summary"):
-        raise HTTPException(status_code=503, detail="No se pudo obtener el resumen del portafolio")
+        # En lugar de 503, devolver estado "building" para usuarios nuevos
+        logger.info("No hay resumen disponible para usuario %s (posible usuario nuevo)", user_id)
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "building",
+                "message": "Tu portafolio está siendo configurado. Esto puede tomar unos minutos.",
+                "summary": None,
+                "user_id": user_id
+            }
+        )
 
     # Asegurarse de que 'generated_at' estÃ© en la respuesta si es posible
     if "generated_at" not in summary_data:
@@ -104,7 +114,16 @@ async def get_market_overview(
         return JSONResponse(status_code=200, content=market)
 
     if not market:
-        raise HTTPException(status_code=503, detail="No se pudo obtener la informaciÃ³n de mercado")
+        logger.info("No hay información de mercado disponible para usuario %s", user_id)
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "building",
+                "message": "La información de mercado está siendo generada.",
+                "market": None,
+                "user_id": user_id
+            }
+        )
     return market
 
 
@@ -113,14 +132,37 @@ async def get_chart(
     chart_name: str,
     current_user: User = Depends(get_current_user_from_header_or_query),
 ):
-    """Entrega el HTML del grÃ¡fico solicitado del usuario autenticado (portfolio, allocation o sÃ­mbolo concreto)."""
+    """Entrega el HTML del gráfico solicitado del usuario autenticado (portfolio, allocation o símbolo concreto)."""
     user_id = str(current_user.user_id)
-    logger.info("Solicitando grÃ¡fico '%s' para user_id=%s", chart_name, user_id)
+    logger.info("Solicitando gráfico '%s' para user_id=%s", chart_name, user_id)
     
     client = get_portfolio_manager_client(user_id)
     html = await client.get_chart(chart_name)
     if not html:
-        raise HTTPException(status_code=404, detail=f"No se encontrÃ³ el grÃ¡fico '{chart_name}'")
+        logger.info("No se encontró gráfico '%s' para usuario %s (posible usuario nuevo)", chart_name, user_id)
+        # Devolver un HTML de placeholder para usuarios nuevos
+        return HTMLResponse(
+            content=f'''
+            <html>
+            <head><style>
+                body {{ font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f7fb; }}
+                .placeholder {{ text-align: center; color: #666; }}
+                .placeholder h2 {{ color: #3b82f6; }}
+                .spinner {{ width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px; }}
+                @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+            </style></head>
+            <body>
+                <div class="placeholder">
+                    <div class="spinner"></div>
+                    <h2>Generando gráfico...</h2>
+                    <p>Tu portafolio está siendo configurado.</p>
+                    <p>Este gráfico estará disponible en unos minutos.</p>
+                </div>
+            </body>
+            </html>
+            ''',
+            status_code=202
+        )
     return HTMLResponse(content=html)
 
 

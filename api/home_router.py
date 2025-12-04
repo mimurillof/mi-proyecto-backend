@@ -28,13 +28,11 @@ async def get_home_dashboard(
     try:
         # Usar el ID del usuario autenticado para obtener sus datos personalizados
         return get_home_dashboard_data(user_id)
-    except FileNotFoundError:
-        logger.info("Datos de inicio no encontrados para usuario %s. Iniciando setup bajo demanda.", user_id)
+    except FileNotFoundError as fnf:
+        logger.info("Datos de inicio no encontrados para usuario %s (usuario nuevo). Iniciando setup bajo demanda. Detalle: %s", user_id, fnf)
         
-        # Disparar la generación de datos en background (o await si queremos asegurar el trigger)
-        # Usamos await aquí para asegurar que el trigger se envíe antes de responder, 
-        # aunque la ejecución en Heroku es asíncrona por naturaleza.
-        # Si preferimos que sea totalmente background para no bloquear la respuesta HTTP:
+        # Disparar la generación de datos en background
+        # Esto ejecuta los microservicios en Heroku para generar los datos del usuario
         background_tasks.add_task(heroku_service.trigger_on_demand_setup, user_id)
         
         return JSONResponse(
@@ -46,10 +44,29 @@ async def get_home_dashboard(
                     "Generando análisis de mercado...",
                     "Construyendo portafolio inicial...",
                     "Finalizando configuración..."
-                ]
+                ],
+                "user_id": user_id
             }
         )
     except Exception as exc:  # pragma: no cover - errores inesperados
+        error_msg = str(exc).lower()
+        # Verificar si es un error que indica datos faltantes
+        if "not found" in error_msg or "no existe" in error_msg or "vacío" in error_msg:
+            logger.info("Posible usuario nuevo detectado por error: %s. Iniciando setup bajo demanda.", exc)
+            background_tasks.add_task(heroku_service.trigger_on_demand_setup, user_id)
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "status": "building",
+                    "message": "Estamos preparando tu portafolio y analizando el mercado. Esto puede tomar unos minutos.",
+                    "steps": [
+                        "Generando análisis de mercado...",
+                        "Construyendo portafolio inicial...",
+                        "Finalizando configuración..."
+                    ],
+                    "user_id": user_id
+                }
+            )
         logger.exception("Error al obtener datos para la sección de inicio del usuario %s", user_id)
         raise HTTPException(status_code=500, detail="Error al obtener datos de inicio") from exc
 

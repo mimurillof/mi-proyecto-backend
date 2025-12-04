@@ -85,9 +85,11 @@ def load_portfolio_news_payload(user_id: str) -> Dict[str, Any]:
         
     Returns:
         Dict con los datos de noticias del portafolio
+        
+    Raises:
+        FileNotFoundError: Cuando no existen datos para este usuario (usuario nuevo)
     """
     service = get_supabase_storage(settings)
-    last_error: Optional[Exception] = None
 
     if service:
         try:
@@ -95,26 +97,23 @@ def load_portfolio_news_payload(user_id: str) -> Dict[str, Any]:
             data["_source"] = "supabase"
             return data
         except Exception as exc:  # pragma: no cover - dependencia externa
-            last_error = exc
-            logger.warning("Fallo al leer %s desde Supabase para usuario %s: %s", PORTFOLIO_NEWS_FILENAME, user_id, exc)
-
-    if LOCAL_JSON_PATH.exists():
-        try:
-            with LOCAL_JSON_PATH.open("r", encoding="utf-8") as file:
-                data = json.load(file)
-            data["_source"] = "local"
-            return data
-        except Exception as exc:
-            logger.error("Error al cargar JSON local %s: %s", LOCAL_JSON_PATH, exc)
-            raise
-
-    if last_error:
-        raise RuntimeError(
-            f"No fue posible obtener {PORTFOLIO_NEWS_FILENAME} desde Supabase ni desde el archivo local"
-        ) from last_error
-
+            # Verificar si es un error de "archivo no encontrado" vs otros errores
+            error_msg = str(exc).lower()
+            if "not found" in error_msg or "404" in error_msg or "vacío" in error_msg or "inexistente" in error_msg or "empty" in error_msg:
+                logger.info("Datos no encontrados para usuario %s en Supabase (usuario nuevo): %s", user_id, exc)
+                raise FileNotFoundError(
+                    f"No existen datos de {PORTFOLIO_NEWS_FILENAME} para el usuario {user_id}. Usuario nuevo requiere setup."
+                ) from exc
+            else:
+                # Errores de conexión u otros - re-lanzar
+                logger.error("Error de Supabase al leer %s para usuario %s: %s", PORTFOLIO_NEWS_FILENAME, user_id, exc)
+                raise
+    else:
+        logger.warning("Servicio de Supabase no disponible")
+    
+    # Sin servicio de Supabase configurado - tratamos como usuario nuevo
     raise FileNotFoundError(
-        f"El archivo {PORTFOLIO_NEWS_FILENAME} no está disponible ni en Supabase ni en el repositorio"
+        f"El archivo {PORTFOLIO_NEWS_FILENAME} no está disponible para el usuario {user_id}"
     )
 
 

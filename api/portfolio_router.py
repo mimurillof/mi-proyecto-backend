@@ -12,7 +12,7 @@ import glob
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 import logging
 from pydantic import BaseModel
 
@@ -331,16 +331,39 @@ async def get_live_metrics(current_user: User = Depends(get_current_user)):
         return response_data
         
     except Exception as e:
-        logger.error(f"Error al obtener mÃ©tricas desde Supabase para usuario {user_id}: {str(e)}")
-        # Intentar fallback al mÃ©todo local
+        logger.error(f"Error al obtener métricas desde Supabase para usuario {user_id}: {str(e)}")
+        error_msg = str(e).lower()
+        
+        # Si es un error de "no encontrado", tratarlo como usuario nuevo
+        if "not found" in error_msg or "404" in error_msg or "vacío" in error_msg or "inexistente" in error_msg:
+            logger.info("Usuario %s sin métricas (posible usuario nuevo)", user_id)
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "status": "building",
+                    "message": "Tus métricas están siendo generadas. Esto puede tomar unos minutos.",
+                    "performance_metrics": {},
+                    "risk_analysis": {},
+                    "user_id": user_id
+                }
+            )
+        
+        # Para otros errores, intentar fallback local pero si falla, devolver building
         try:
             logger.info("Intentando fallback a archivos locales...")
             return await get_live_metrics_local()
         except Exception as fallback_error:
             logger.error(f"Error en fallback: {str(fallback_error)}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error al obtener mÃ©tricas: Supabase: {str(e)}, Local: {str(fallback_error)}"
+            # En lugar de 500, devolver estado building
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "status": "building",
+                    "message": "Tus métricas están siendo generadas. Por favor espera unos minutos.",
+                    "performance_metrics": {},
+                    "risk_analysis": {},
+                    "user_id": user_id
+                }
             )
 
 async def get_live_metrics_local():

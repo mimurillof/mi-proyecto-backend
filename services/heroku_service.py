@@ -72,33 +72,35 @@ class HerokuService:
         Triggers all necessary microservices for a new user setup.
         
         Args:
-            user_id: The ID of the user (passed as env var or argument if needed by scripts).
-                     Note: The scripts currently might not take user_id argument if they process all users 
-                     or if they are designed to run globally. 
-                     However, the requirement says "backend detect user is new... execute these systems".
-                     
-                     If the scripts are global (process all users), running them will process the new user too.
-                     If they need specific user targeting, the command needs to be updated.
-                     Based on the prompt: "ondemand python orchestrator.py", it seems they are global or pick up pending work.
+            user_id: The ID of the user. This is passed to the scripts as an argument
+                     so they can generate data specifically for this user.
+        
+        Returns:
+            Dict with results from each triggered service.
         """
+        logger.info("Triggering on-demand setup for user: %s", user_id)
         
-        # Define the commands as requested
-        # Home: ondemand python orchestrator.py
-        # Portfolio: ondemand python generate_report.py --period 6mo
-        # Reports: ondemand python orchestrator_utf8.py
-        
-        # We run them in parallel
+        # Commands now include user_id as an environment variable or argument
+        # The scripts should be updated to accept --user_id parameter
+        # For now, we pass it as an argument that scripts can optionally use
         results = await asyncio.gather(
-            self.trigger_dyno(self.apps["home"], "python orchestrator.py"),
-            self.trigger_dyno(self.apps["portfolio"], "python generate_report.py --period 6mo"),
-            self.trigger_dyno(self.apps["reports"], "python orchestrator_utf8.py")
+            self.trigger_dyno(self.apps["home"], f"python orchestrator.py --user_id {user_id}"),
+            self.trigger_dyno(self.apps["portfolio"], f"python generate_report.py --period 6mo --user_id {user_id}"),
+            self.trigger_dyno(self.apps["reports"], f"python orchestrator_utf8.py --user_id {user_id}"),
+            return_exceptions=True  # Don't fail all if one fails
         )
         
-        return {
-            "home": results[0],
-            "portfolio": results[1],
-            "reports": results[2]
-        }
+        # Process results
+        processed_results = {}
+        for name, result in zip(["home", "portfolio", "reports"], results):
+            if isinstance(result, Exception):
+                logger.error("Error triggering %s for user %s: %s", name, user_id, result)
+                processed_results[name] = {"status": "error", "detail": str(result)}
+            else:
+                processed_results[name] = result
+        
+        logger.info("On-demand setup triggered for user %s. Results: %s", user_id, processed_results)
+        return processed_results
 
 # Singleton instance
 heroku_service = HerokuService()

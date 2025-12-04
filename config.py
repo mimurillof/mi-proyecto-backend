@@ -59,33 +59,6 @@ class Settings(BaseSettings):
     SUPABASE_PORTFOLIO_CHARTS_PREFIX: Optional[str] = None
     SUPABASE_PORTFOLIO_ASSETS_PREFIX: Optional[str] = None
     ENABLE_SUPABASE_UPLOAD: bool = True
-    SUPABASE_CLEANUP_AFTER_TESTS: bool = False
-
-    # PDF Generation Service
-    PDF_SERVICE_URL: Optional[str] = None
-    INTERNAL_API_KEY: Optional[str] = None
-
-    # Portfolio Manager Service
-    PORTFOLIO_MANAGER_ENABLED: bool = True
-    PORTFOLIO_MANAGER_REFRESH_MINUTES: int = 15
-    PORTFOLIO_MANAGER_DEFAULT_PERIOD: str = "6mo"
-    PORTFOLIO_DATA_PATH: str = "../Portfolio manager/data/portfolio_data.json"
-    PORTFOLIO_MANAGER_SERVICE_URL: str = "http://localhost:9000"
-    PORTFOLIO_MANAGER_TIMEOUT: int = 30
-    PORTFOLIO_MANAGER_DEFAULT_USER_ID: str = "default"
-    PORTFOLIO_MANAGER_SIMULATE_MARKET_OPEN: bool = False
-    PORTFOLIO_MANAGER_FORCE_UPDATES: bool = False
-    PORTFOLIO_MANAGER_TEST_REFRESH_SECONDS: Optional[int] = None
-
-    class Config:
-        env_file = ".env"
-
-settings = Settings() 
-
-# ===================================================================
-# AÑADE ESTA CORRECCIÓN AQUÍ
-# ===================================================================
-if settings.DATABASE_URL and settings.DATABASE_URL.startswith("postgresql://"):
     settings.DATABASE_URL = settings.DATABASE_URL.replace(
         "postgresql://", "postgresql+asyncpg://", 1
     )

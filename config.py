@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     
     # CORS Settings
     CLIENT_ORIGIN: str = "https://mi-proyecto-topaz-omega.vercel.app"
-    CORS_ORIGINS: str = "https://chat-agent-horizon-cc5e16d4b37e.herokuapp.com,https://mi-proyecto-topaz-omega.vercel.app,https://horizon-next-app.vercel.app"
+    CORS_ORIGINS: str = "https://mi-proyecto-topaz-omega.vercel.app,https://horizon-next-app.vercel.app,https://chat-agent-horizon-cc5e16d4b37e.herokuapp.com"
     
     def get_cors_origins(self) -> list:
         """Obtener lista de orígenes CORS"""
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # Storage: bucket único, archivos en {user_id}/
     SUPABASE_BUCKET_NAME: str = "portfolio-files"
     
-    # Prefijos legacy (pueden ser None si no se usan)
+    # Prefijos legacy (pueden ser None - ya no se usan, archivos van en {user_id}/)
     SUPABASE_BASE_PREFIX: Optional[str] = None
     SUPABASE_BASE_PREFIX_2: Optional[str] = None
     
@@ -63,6 +63,12 @@ class Settings(BaseSettings):
 
     # Heroku Settings
     HEROKU_API_KEY: Optional[str] = None
+
+    # Portfolio Manager Service
+    PORTFOLIO_MANAGER_ENABLED: bool = True
+    PORTFOLIO_MANAGER_REFRESH_MINUTES: int = 15
+    PORTFOLIO_MANAGER_DEFAULT_PERIOD: str = "6mo"
+    PORTFOLIO_DATA_PATH: str = "data/portfolio_data.json"
 
     class Config:
         env_file = ".env"

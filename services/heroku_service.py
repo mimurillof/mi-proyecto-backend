@@ -109,11 +109,10 @@ class HerokuService:
         logger.info("Triggering on-demand setup for user: %s", user_id)
         
         # Commands now include user_id as an environment variable or argument
-        # The scripts should be updated to accept --user_id parameter
-        # For now, we pass it as an argument that scripts can optionally use
+        # Note: portfolio uses --user-id (with hyphen), others use --user_id (with underscore)
         results = await asyncio.gather(
             self.trigger_dyno(self.apps["home"], f"python orchestrator.py --user_id {user_id}"),
-            self.trigger_dyno(self.apps["portfolio"], f"python generate_report.py --period 6mo --user_id {user_id}"),
+            self.trigger_dyno(self.apps["portfolio"], f"python generate_report.py --period 6mo --user-id {user_id}"),
             self.trigger_dyno(self.apps["reports"], f"python orchestrator_utf8.py --user_id {user_id}"),
             return_exceptions=True  # Don't fail all if one fails
         )
